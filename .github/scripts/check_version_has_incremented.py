@@ -74,6 +74,7 @@ def get_maven_central_version(package_name: str) -> str:
     response = requests.get(url)
     if response.status_code == 404:
         return "0.0.0"
+    response.raise_for_status()
     version_match = re.search(r"<release>(.*?)</release>", response.text)
     if not version_match:
         version_match = re.search(r"<latest>(.*?)</latest>", response.text)
