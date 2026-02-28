@@ -46,7 +46,7 @@ mavenPublishing {
     pom {
         name.set("Firecrawl Java SDK")
         description.set("Java SDK for the Firecrawl web scraping API")
-        url.set("https://github.com/mendableai/firecrawl")
+        url.set("https://github.com/firecrawl/firecrawl")
 
         licenses {
             license {
@@ -63,9 +63,9 @@ mavenPublishing {
         }
 
         scm {
-            url.set("https://github.com/mendableai/firecrawl")
-            connection.set("scm:git:git://github.com/mendableai/firecrawl.git")
-            developerConnection.set("scm:git:ssh://github.com/mendableai/firecrawl.git")
+            url.set("https://github.com/firecrawl/firecrawl")
+            connection.set("scm:git:git://github.com/firecrawl/firecrawl.git")
+            developerConnection.set("scm:git:ssh://github.com/firecrawl/firecrawl.git")
         }
     }
 }
