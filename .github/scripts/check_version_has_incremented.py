@@ -15,7 +15,7 @@ false
 
 python .github/scripts/check_version_has_incremented.py java ./apps/java-sdk com.firecrawl:firecrawl-java
 Local version: 1.0.0
-Published version: 0.9.0
+Published version: 0.0.0  (0.0.0 means not yet published on Maven Central)
 true
 
 """
