@@ -171,6 +171,7 @@ export async function scrapePDFWithRunPodMU(
     meta.logger.child({ method: "scrapePDF/MUv1" }).warn("MU v1 failed", {
       durationMs,
       url: meta.rewrittenUrl ?? meta.url,
+      pagesProcessed,
     });
     throw new Error("RunPod MU failed to parse PDF");
   }
@@ -180,6 +181,7 @@ export async function scrapePDFWithRunPodMU(
     meta.logger.child({ method: "scrapePDF/MUv1" }).warn("MU v1 failed", {
       durationMs,
       url: meta.rewrittenUrl ?? meta.url,
+      pagesProcessed,
     });
     throw new Error("RunPod MU returned no result");
   }
