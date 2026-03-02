@@ -18,9 +18,9 @@ export function extractNumbers(text: string): Set<string> {
   return new Set(matches ?? []);
 }
 
-/** Count markdown tables by looking for `|---|` header-separator rows. */
+/** Count markdown tables by matching full header-separator rows. */
 export function countTables(md: string): number {
-  const matches = md.match(/\|[\s-]+\|/g);
+  const matches = md.match(/^\s*(?:\|\s*:?-+:?\s*)+\|\s*$/gm);
   return matches?.length ?? 0;
 }
 
