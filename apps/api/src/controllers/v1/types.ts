@@ -74,7 +74,7 @@ export const url = z.preprocess(
         return false;
       }
     }, "Invalid URL"),
-  // .refine((x) => !isUrlBlocked(x as string), BLOCKLISTED_URL_MESSAGE),
+  // .refine((x) => !isUrlBlocked(x as string), UNSUPPORTED_SITE_MESSAGE),
 );
 
 const agentExtractModelValue = "fire-1";
@@ -453,6 +453,7 @@ const baseScrapeOptions = z.strictObject({
     .transform(tags => tags.map(transformIframeSelector))
     .optional(),
   onlyMainContent: z.boolean().prefault(true),
+  onlyCleanContent: z.boolean().prefault(false),
   timeout: z.int().positive().min(1000).optional(),
   waitFor: z.int().nonnegative().finite().max(60000).prefault(0),
   // Deprecate this to jsonOptions
@@ -1246,6 +1247,8 @@ export type AuthCreditUsageChunk = {
     extractStatus: number;
     extractAgentPreview?: number;
     scrapeAgentPreview?: number;
+    browser?: number;
+    browserExecute?: number;
   };
   concurrency: number;
   flags: TeamFlags;
@@ -1261,12 +1264,10 @@ export type TeamFlags = {
   allowZDR?: boolean;
   zdrCost?: number;
   checkRobotsOnScrape?: boolean;
-  allowTeammateInvites?: boolean;
   crawlTtlHours?: number;
   ipWhitelist?: boolean;
   skipCountryCheck?: boolean;
-  extractV3Beta?: boolean;
-  agentBeta?: boolean;
+  browserBeta?: boolean;
   bypassCreditChecks?: boolean;
   debugBranding?: boolean;
 } | null;

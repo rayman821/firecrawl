@@ -46,6 +46,7 @@ from .methods.aio import map as async_map # type: ignore[attr-defined]
 from .methods.aio import usage as async_usage # type: ignore[attr-defined]
 from .methods.aio import extract as async_extract  # type: ignore[attr-defined]
 from .methods.aio import agent as async_agent  # type: ignore[attr-defined]
+from .methods.aio import browser as async_browser  # type: ignore[attr-defined]
 
 from .watcher_async import AsyncWatcher
 
@@ -54,13 +55,32 @@ class AsyncFirecrawlClient:
     def _is_cloud_service(url: str) -> bool:
         return "api.firecrawl.dev" in url.lower()
 
-    def __init__(self, api_key: Optional[str] = None, api_url: str = "https://api.firecrawl.dev"):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        api_url: str = "https://api.firecrawl.dev",
+        timeout: Optional[float] = None,
+        max_retries: int = 3,
+        backoff_factor: float = 0.5,
+    ):
         if api_key is None:
             api_key = os.getenv("FIRECRAWL_API_KEY")
         if self._is_cloud_service(api_url) and not api_key:
             raise ValueError("API key is required for the cloud API. Set FIRECRAWL_API_KEY or pass api_key.")
-        self.http_client = HttpClient(api_key, api_url)
-        self.async_http_client = AsyncHttpClient(api_key, api_url)
+        self.http_client = HttpClient(
+            api_key,
+            api_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            backoff_factor=backoff_factor,
+        )
+        self.async_http_client = AsyncHttpClient(
+            api_key,
+            api_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            backoff_factor=backoff_factor,
+        )
 
     # Scrape
     async def scrape(
@@ -289,7 +309,7 @@ class AsyncFirecrawlClient:
         # Returns v2 errors structure; typed as CrawlErrorsResponse for parity
         return await async_batch.get_batch_scrape_errors(self.async_http_client, job_id)  # type: ignore[return-value]
 
-    # Extract (proxy to v1 async)
+    # Extract (proxy to v1 async) — deprecated
     async def extract(
         self,
         urls: Optional[List[str]] = None,
@@ -306,6 +326,13 @@ class AsyncFirecrawlClient:
         timeout: Optional[int] = None,
         integration: Optional[str] = None,
     ):
+        """Extract structured data and wait until completion (async).
+
+        .. deprecated::
+            The extract endpoint is in maintenance mode and its use is discouraged.
+            Review https://docs.firecrawl.dev/developer-guides/usage-guides/choosing-the-data-extractor
+            to find a replacement.
+        """
         return await async_extract.extract(
             self.async_http_client,
             urls,
@@ -323,6 +350,13 @@ class AsyncFirecrawlClient:
         )
 
     async def get_extract_status(self, job_id: str):
+        """Get the current status (and data if completed) of an extract job (async).
+
+        .. deprecated::
+            The extract endpoint is in maintenance mode and its use is discouraged.
+            Review https://docs.firecrawl.dev/developer-guides/usage-guides/choosing-the-data-extractor
+            to find a replacement.
+        """
         return await async_extract.get_extract_status(self.async_http_client, job_id)
 
     async def start_extract(
@@ -339,6 +373,13 @@ class AsyncFirecrawlClient:
         ignore_invalid_urls: Optional[bool] = None,
         integration: Optional[str] = None,
     ):
+        """Start an extract job (non-blocking, async).
+
+        .. deprecated::
+            The extract endpoint is in maintenance mode and its use is discouraged.
+            Review https://docs.firecrawl.dev/developer-guides/usage-guides/choosing-the-data-extractor
+            to find a replacement.
+        """
         return await async_extract.start_extract(
             self.async_http_client,
             urls,
@@ -419,6 +460,93 @@ class AsyncFirecrawlClient:
             True if the agent was cancelled
         """
         return await async_agent.cancel_agent(self.async_http_client, job_id)
+
+    # Browser
+    async def browser(
+        self,
+        *,
+        ttl: Optional[int] = None,
+        activity_ttl: Optional[int] = None,
+        stream_web_view: Optional[bool] = None,
+        profile: Optional[Dict[str, Any]] = None,
+    ):
+        """Create a new browser session.
+
+        Args:
+            ttl: Total time-to-live in seconds (30-3600, default 300)
+            activity_ttl: Inactivity TTL in seconds (10-3600)
+            stream_web_view: Whether to enable webview streaming
+            profile: Profile config with ``name`` (str) and
+                optional ``save_changes`` (bool, default ``True``)
+
+        Returns:
+            BrowserCreateResponse with session id and CDP URL
+        """
+        return await async_browser.browser(
+            self.async_http_client,
+            ttl=ttl,
+            activity_ttl=activity_ttl,
+            stream_web_view=stream_web_view,
+            profile=profile,
+        )
+
+    async def browser_execute(
+        self,
+        session_id: str,
+        code: str,
+        *,
+        language: Literal["python", "node", "bash"] = "bash",
+        timeout: Optional[int] = None,
+    ):
+        """Execute code in a browser session.
+
+        Args:
+            session_id: Browser session ID
+            code: Code to execute
+            language: Programming language ("python", "node", or "bash")
+            timeout: Execution timeout in seconds (1-300, default 30)
+
+        Returns:
+            BrowserExecuteResponse with execution result
+        """
+        return await async_browser.browser_execute(
+            self.async_http_client,
+            session_id,
+            code,
+            language=language,
+            timeout=timeout,
+        )
+
+    async def delete_browser(self, session_id: str):
+        """Delete a browser session.
+
+        Args:
+            session_id: Browser session ID
+
+        Returns:
+            BrowserDeleteResponse
+        """
+        return await async_browser.delete_browser(
+            self.async_http_client, session_id
+        )
+
+    async def list_browsers(
+        self,
+        *,
+        status: Optional[Literal["active", "destroyed"]] = None,
+    ):
+        """List browser sessions.
+
+        Args:
+            status: Filter by session status ("active" or "destroyed")
+
+        Returns:
+            BrowserListResponse with list of sessions
+        """
+        return await async_browser.list_browsers(
+            self.async_http_client,
+            status=status,
+        )
 
     # Usage endpoints
     async def get_concurrency(self):

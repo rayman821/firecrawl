@@ -1,5 +1,4 @@
 import { Logger } from "winston";
-import * as Sentry from "@sentry/node";
 import { z } from "zod";
 
 import { InternalAction } from "../../../../controllers/v1/types";
@@ -17,12 +16,11 @@ import {
   UnsupportedFileError,
 } from "../../error";
 import { Meta } from "../..";
-import { abTestFireEngine } from "../../../../services/ab-test";
-import { scheduleABComparison } from "../../../../services/ab-test-comparison";
 
 import { config } from "../../../../config";
 export type FireEngineScrapeRequestCommon = {
   url: string;
+  scrapeId?: string;
 
   headers?: { [K: string]: string };
 
@@ -186,13 +184,10 @@ export async function fireEngineScrape<
   request: FireEngineScrapeRequestCommon & Engine,
   mock: MockState | null,
   abort?: AbortSignal,
-  production = true,
+  baseUrl: string = fireEngineURL,
 ): Promise<z.infer<typeof processingSchema> | FireEngineCheckStatusSuccess> {
-  const abTest = abTestFireEngine(request);
-  const productionStartTime = Date.now();
-
   let status = await robustFetch({
-    url: `${production ? fireEngineURL : fireEngineStagingURL}/scrape`,
+    url: `${baseUrl}/scrape`,
     method: "POST",
     headers: {},
     body: request,
@@ -226,22 +221,6 @@ export async function fireEngineScrape<
     }
 
     logger.debug("Scrape succeeded!");
-
-    // Schedule A/B comparison if enabled (fire-and-forget)
-    if (abTest.shouldCompare && abTest.mirrorPromise) {
-      const productionTimeTaken = Date.now() - productionStartTime;
-      scheduleABComparison(
-        meta.url,
-        {
-          content: successParse.data.content,
-          pageStatusCode: successParse.data.pageStatusCode,
-        },
-        productionTimeTaken,
-        abTest.mirrorPromise,
-        logger,
-      );
-    }
-
     return successParse.data;
   } else if (processingParse.success) {
     return processingParse.data;

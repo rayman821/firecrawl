@@ -13,8 +13,11 @@ import { validateIdempotencyKey } from "../services/idempotency/validate";
 import { checkTeamCredits } from "../services/billing/credit_billing";
 import { isUrlBlocked } from "../scraper/WebScraper/utils/blocklist";
 import { logger } from "../lib/logger";
-import { BLOCKLISTED_URL_MESSAGE } from "../lib/strings";
-import { addDomainFrequencyJob } from "../services";
+import {
+  httpRequestDurationSeconds,
+  getRoutePattern,
+} from "../lib/http-metrics";
+import { UNSUPPORTED_SITE_MESSAGE } from "../lib/strings";
 import * as geoip from "geoip-country";
 import { isSelfHosted } from "../lib/deployment";
 import { validate as isUuid } from "uuid";
@@ -142,18 +145,6 @@ export function authMiddleware(
         currentRateLimiterMode = RateLimiterMode.ExtractAgentPreview;
       }
 
-      // Track domain frequency regardless of caching
-      try {
-        // Use the URL from the request body if available
-        const urlToTrack = (req.body as any)?.url;
-        if (urlToTrack) {
-          // await addDomainFrequencyJob(urlToTrack);
-        }
-      } catch (error) {
-        // Log error without meta.logger since it's not available in this context
-        logger.warn("Failed to track domain frequency", { error });
-      }
-
       // if (currentRateLimiterMode === RateLimiterMode.Scrape && isAgentExtractModelValid((req.body as any)?.agent?.model)) {
       //   currentRateLimiterMode = RateLimiterMode.ScrapeAgentPreview;
       // }
@@ -218,7 +209,7 @@ export function blocklistMiddleware(
     if (!res.headersSent) {
       return res.status(403).json({
         success: false,
-        error: BLOCKLISTED_URL_MESSAGE,
+        error: UNSUPPORTED_SITE_MESSAGE,
       });
     }
   }
@@ -317,6 +308,14 @@ export function requestTimingMiddleware(version: string) {
     const originalJson = res.json.bind(res);
     res.json = function (body: any) {
       const requestTime = new Date().getTime() - startTime;
+
+      const durationSeconds = requestTime / 1000;
+      const route = getRoutePattern(req);
+      const status = String(res.statusCode);
+
+      httpRequestDurationSeconds
+        .labels(version, req.method, route, status)
+        .observe(durationSeconds);
 
       // Only log for successful responses to avoid duplicate error logs
       if (body?.success !== false) {

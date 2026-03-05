@@ -186,7 +186,7 @@ export async function getACUC(
           ? supabase_rr_service
           : supabase_service;
       ({ data, error } = await client.rpc(
-        "auth_credit_usage_chunk_40",
+        "auth_credit_usage_chunk_45",
         {
           input_key: api_key,
           i_is_extract: isExtract,
@@ -316,7 +316,7 @@ export async function getACUCTeam(
           ? supabase_rr_service
           : supabase_service;
       ({ data, error } = await client.rpc(
-        "auth_credit_usage_chunk_40_from_team",
+        "auth_credit_usage_chunk_45_from_team",
         {
           input_team: team_id,
           i_is_extract: isExtract,
@@ -491,20 +491,21 @@ async function supaAuthenticateUser(
   try {
     await rateLimiter.consume(team_endpoint_token);
   } catch (rateLimiterRes) {
-    logger.error(`Rate limit exceeded: ${rateLimiterRes}`, {
-      teamId,
-      priceId,
-      mode,
-      rateLimits: chunk?.rate_limits,
-      rateLimiterRes,
-    });
+    // logger.error(`Rate limit exceeded: ${rateLimiterRes}`, {
+    //   teamId,
+    //   priceId,
+    //   mode,
+    //   rateLimits: chunk?.rate_limits,
+    //   rateLimiterRes,
+    // });
+
     const secs = Math.round(rateLimiterRes.msBeforeNext / 1000) || 1;
     const retryDate = new Date(Date.now() + rateLimiterRes.msBeforeNext);
 
     // We can only send a rate limit email every 7 days, send notification already has the date in between checking
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 7);
+    // const startDate = new Date();
+    // const endDate = new Date();
+    // endDate.setDate(endDate.getDate() + 7);
 
     // await sendNotification(team_id, NotificationType.RATE_LIMIT_REACHED, startDate.toISOString(), endDate.toISOString());
 

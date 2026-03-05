@@ -45,7 +45,7 @@ import { startWebScraperPipeline } from "../../main/runWebScraper";
 import { CostTracking } from "../../lib/cost-tracking";
 import { normalizeUrlOnlyHostname } from "../../lib/canonical-url";
 import { isUrlBlocked } from "../../scraper/WebScraper/utils/blocklist";
-import { BLOCKLISTED_URL_MESSAGE } from "../../lib/strings";
+import { UNSUPPORTED_SITE_MESSAGE } from "../../lib/strings";
 import { generateURLSplits, queryIndexAtSplitLevel } from "../index";
 import { WebCrawler } from "../../scraper/WebScraper/crawler";
 import { calculateCreditsToBeBilled } from "../../lib/scrape-billing";
@@ -181,10 +181,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
   const abortTimeoutHandle =
     remainingTime !== undefined
       ? setTimeout(
-          () =>
-            abortController.abort(
-              new ScrapeJobTimeoutError(),
-            ),
+          () => abortController.abort(new ScrapeJobTimeoutError()),
           remainingTime,
         )
       : undefined;
@@ -322,7 +319,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
             (await getACUCTeam(job.data.team_id))?.flags ?? null,
           )
         ) {
-          throw new CrawlDenialError(BLOCKLISTED_URL_MESSAGE); // TODO: make this its own error type that is ignored by error tracking
+          throw new CrawlDenialError(UNSUPPORTED_SITE_MESSAGE); // TODO: make this its own error type that is ignored by error tracking
         }
 
         const p1 = generateURLPermutations(normalizeURL(doc.metadata.url, sc));
@@ -541,7 +538,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
 
       doc.metadata.creditsUsed = credits_billed ?? undefined;
 
-      await logScrape(
+      const logScrapePromise = logScrape(
         {
           id: job.id,
           request_id: job.data.requestId ?? job.data.crawl_id ?? job.id,
@@ -559,6 +556,16 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
         },
         false,
       );
+
+      if (job.data.skipNuq) {
+        // doesn't use GCS for result retrieval, safe to not await
+        logScrapePromise.catch(err =>
+          logger.warn("Background scrape log failed", { error: err }),
+        );
+      } else {
+        // v0 - must await because waitForJob reads from GCS
+        await logScrapePromise;
+      }
     }
 
     logger.info(`🐂 Job done ${job.id}`);
