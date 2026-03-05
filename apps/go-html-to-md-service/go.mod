@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
-	github.com/firecrawl/html-to-markdown v0.0.0-20260305014106-d5b7c1a14bb9
+	github.com/firecrawl/html-to-markdown v0.0.0-20260305014655-0ec744e89d3c
 	github.com/gorilla/mux v1.8.1
 	github.com/rs/zerolog v1.33.0
 )
@@ -20,6 +20,4 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace github.com/JohannesKaufmann/html-to-markdown => github.com/firecrawl/html-to-markdown v0.0.0-20260305014106-d5b7c1a14bb9
-
-replace github.com/firecrawl/html-to-markdown => ../../../html-to-markdown
+replace github.com/JohannesKaufmann/html-to-markdown => github.com/firecrawl/html-to-markdown v0.0.0-20260305014655-0ec744e89d3c
