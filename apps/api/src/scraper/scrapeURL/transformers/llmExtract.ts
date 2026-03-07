@@ -1414,8 +1414,14 @@ ${markdown}
 </page>`;
 
   const modelChain = [
-    { name: "gemini-2.5-flash-lite", model: getModel("gemini-2.5-flash-lite", "google") },
-    { name: "gemini-2.0-flash-lite", model: getModel("gemini-2.0-flash-lite", "google") },
+    {
+      name: "gpt-5-nano",
+      model: getModel("gpt-5-nano", "openai"),
+    },
+    {
+      name: "gpt-5-mini",
+      model: getModel("gpt-5-mini", "openai"),
+    },
   ];
 
   for (const { name, model } of modelChain) {
@@ -1425,6 +1431,11 @@ ${markdown}
         model,
         system: querySystemPrompt,
         prompt: queryPrompt,
+        providerOptions: {
+          openai: {
+            reasoning: { effort: "minimal" },
+          },
+        } as any,
         experimental_telemetry: {
           isEnabled: true,
           metadata: {
