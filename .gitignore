@@ -57,4 +57,4 @@ target/
 .cursor/
 
 # local files
-_local
+_local/
