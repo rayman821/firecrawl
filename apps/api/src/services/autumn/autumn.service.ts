@@ -13,7 +13,7 @@ import type {
   TrackParams,
 } from "./types";
 
-const TEAM_CREDITS_FEATURE_ID = "TEAM_CREDITS";
+const CREDITS_FEATURE_ID = "CREDITS";
 
 const AUTUMN_DEFAULT_PLAN_ID = "free";
 const AUTUMN_PROVISIONING_LOOKBACK_MS = 15 * 60 * 1000;
@@ -215,7 +215,7 @@ class AutumnService {
       await this.createEntity({
         customerId: resolvedOrgId,
         entityId: teamId,
-        featureId: TEAM_CREDITS_FEATURE_ID,
+        featureId: CREDITS_FEATURE_ID,
         name,
       });
       const createdEntity = await this.getEntity({
@@ -304,7 +304,7 @@ class AutumnService {
       customerId,
       entityId: teamId,
     });
-    const autumnUsage = this.getFeatureUsage(entity, TEAM_CREDITS_FEATURE_ID);
+    const autumnUsage = this.getFeatureUsage(entity, CREDITS_FEATURE_ID);
     const delta = firecrawlHistorical - autumnUsage;
     if (delta <= 0) return;
 
@@ -313,7 +313,7 @@ class AutumnService {
     await this.track({
       customerId,
       entityId: teamId,
-      featureId: TEAM_CREDITS_FEATURE_ID,
+      featureId: CREDITS_FEATURE_ID,
       value: delta,
       properties: {
         source: "autumn_backfill",
@@ -341,7 +341,7 @@ class AutumnService {
       await this.track({
         customerId,
         entityId: teamId,
-        featureId: TEAM_CREDITS_FEATURE_ID,
+        featureId: CREDITS_FEATURE_ID,
         value,
         properties,
       });

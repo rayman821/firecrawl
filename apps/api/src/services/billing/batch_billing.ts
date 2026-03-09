@@ -144,7 +144,7 @@ export async function processBillingBatch() {
         }
 
         logger.info(
-          `✅ Successfully billed team ${group.team_id} for ${group.total_credits} ${group.is_extract ? "tokens" : "credits"}`,
+          `✅ Successfully billed team ${group.team_id} for ${group.total_credits} credits`,
         );
 
         // Track usage in Autumn only after the billing RPC has confirmed success,
@@ -154,7 +154,6 @@ export async function processBillingBatch() {
           value: group.total_credits,
           properties: {
             source: "processBillingBatch",
-            isExtract: group.is_extract,
             apiKeyId: group.api_key_id,
             subscriptionId: group.subscription_id,
           },
