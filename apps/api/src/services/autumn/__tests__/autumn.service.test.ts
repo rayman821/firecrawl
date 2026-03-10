@@ -4,7 +4,6 @@
  * All external I/O is mocked:
  *   - autumnClient  →  jest.fn() stubs on customers / entities / track
  *   - supabase_rr_service  →  stubbed Supabase query builder
- *   - getACUCTeam  →  jest.fn() returning configurable ACUC chunks
  */
 
 import { jest } from "@jest/globals";
@@ -33,12 +32,6 @@ jest.mock("../client", () => ({
   },
 }));
 
-const mockGetACUCTeam = jest.fn<(...args: any[]) => Promise<unknown>>();
-
-jest.mock("../../../controllers/auth", () => ({
-  getACUCTeam: (...args: any[]) => mockGetACUCTeam(...args),
-}));
-
 // Minimal Supabase query-builder stub: .from().select().eq().single() → resolves data/error.
 const makeSupabaseStub = (data: unknown, error: unknown = null) => ({
   from: () => ({
@@ -65,7 +58,6 @@ jest.mock("../../supabase", () => ({
 
 // Import AFTER mocks are wired up.
 import { AutumnService, BoundedMap, BoundedSet } from "../autumn.service";
-import { RateLimiterMode } from "../../../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,14 +65,6 @@ import { RateLimiterMode } from "../../../types";
 
 function makeService() {
   return new AutumnService();
-}
-
-function makeAcucChunk(adjusted_credits_used: number) {
-  return {
-    adjusted_credits_used,
-    sub_current_period_start: "2024-01-01",
-    sub_current_period_end: "2024-02-01",
-  };
 }
 
 function makeEntity(usage: number) {
@@ -97,7 +81,6 @@ beforeEach(() => {
   supabaseStubData = { data: { org_id: "org-1" }, error: null };
   mockEntityGet.mockResolvedValue(makeEntity(0));
   mockEntityCreate.mockResolvedValue({ id: "team-1" });
-  mockGetACUCTeam.mockResolvedValue(makeAcucChunk(0));
 });
 
 // ---------------------------------------------------------------------------
@@ -243,7 +226,6 @@ describe("ensureTrackingContext warm-cache short-circuit", () => {
     const callsAfterWarm = mockEntityGet.mock.calls.length;
 
     // Subsequent call — should not touch provisioning.
-    mockGetACUCTeam.mockResolvedValue(makeAcucChunk(0));
     await svc.reserveCredits({ teamId: "team-1", value: 5 });
 
     // No additional getEntity calls for provisioning.
@@ -273,7 +255,6 @@ describe("reserveCredits", () => {
 
   it("calls track with correct feature and value on happy path", async () => {
     const svc = makeService();
-    mockGetACUCTeam.mockResolvedValue(makeAcucChunk(0));
 
     const result = await svc.reserveCredits({
       teamId: "team-1",
@@ -286,34 +267,6 @@ describe("reserveCredits", () => {
     const trackCalls = mockTrack.mock.calls;
     const usageCall = trackCalls.find(
       (c: any[]) => c[0].featureId === "CREDITS" && c[0].value === 42,
-    );
-    expect(usageCall).toBeDefined();
-  });
-
-  it("does not call backfill track when firecrawlTotal is 0", async () => {
-    const svc = makeService();
-    mockGetACUCTeam.mockResolvedValue(makeAcucChunk(0));
-    mockEntityGet.mockResolvedValue(makeEntity(0));
-
-    await svc.reserveCredits({ teamId: "team-1", value: 10 });
-
-    // Only one track call — the actual usage event; no backfill.
-    const backfillCall = mockTrack.mock.calls.find(
-      (c: any[]) => c[0]?.properties?.source === "autumn_backfill",
-    );
-    expect(backfillCall).toBeUndefined();
-  });
-
-  it("still calls track even if backfill throws", async () => {
-    const svc = makeService();
-    // Force backfill to fail by making getACUCTeam throw.
-    mockGetACUCTeam.mockRejectedValue(new Error("ACUC unavailable"));
-
-    const result = await svc.reserveCredits({ teamId: "team-1", value: 5 });
-
-    expect(result).toBe(true);
-    const usageCall = mockTrack.mock.calls.find(
-      (c: any[]) => c[0].value === 5,
     );
     expect(usageCall).toBeDefined();
   });
@@ -346,88 +299,5 @@ describe("refundCredits", () => {
     const svc = makeService();
     await svc.refundCredits({ teamId: "preview_abc", value: 30 });
     expect(mockTrack).not.toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// _backfillUsageIfNeeded
-// ---------------------------------------------------------------------------
-
-describe("_backfillUsageIfNeeded (via reserveCredits)", () => {
-  it("tracks the delta between firecrawlTotal and autumnUsage", async () => {
-    const svc = makeService();
-    // Firecrawl says 100 credits used across scrape + extract.
-    mockGetACUCTeam
-      .mockResolvedValueOnce(makeAcucChunk(60)) // scrape
-      .mockResolvedValueOnce(makeAcucChunk(40)); // extract
-    // Autumn only recorded 70.
-    mockEntityGet.mockResolvedValue(makeEntity(70));
-
-    await svc.reserveCredits({ teamId: "team-1", value: 1 });
-
-    const backfillCall = mockTrack.mock.calls.find(
-      (c: any[]) => c[0]?.properties?.source === "autumn_backfill",
-    );
-    expect(backfillCall).toBeDefined();
-    // delta = 100 - 70 = 30
-    expect((backfillCall as any[])[0].value).toBe(30);
-  });
-
-  it("does not track when delta is zero or negative", async () => {
-    const svc = makeService();
-    mockGetACUCTeam.mockResolvedValue(makeAcucChunk(50));
-    // Autumn already has more usage than Firecrawl — no backfill needed.
-    mockEntityGet.mockResolvedValue(makeEntity(200));
-
-    await svc.reserveCredits({ teamId: "team-1", value: 1 });
-
-    const backfillCall = mockTrack.mock.calls.find(
-      (c: any[]) => c[0]?.properties?.source === "autumn_backfill",
-    );
-    expect(backfillCall).toBeUndefined();
-  });
-
-  it("does not track when firecrawlTotal is 0", async () => {
-    const svc = makeService();
-    mockGetACUCTeam.mockResolvedValue(makeAcucChunk(0));
-    mockEntityGet.mockResolvedValue(makeEntity(0));
-
-    await svc.reserveCredits({ teamId: "team-1", value: 1 });
-
-    const backfillCall = mockTrack.mock.calls.find(
-      (c: any[]) => c[0]?.properties?.source === "autumn_backfill",
-    );
-    expect(backfillCall).toBeUndefined();
-  });
-
-  it("serialises concurrent backfills per team", async () => {
-    const svc = makeService();
-    let concurrentRuns = 0;
-    let maxConcurrentRuns = 0;
-
-    mockGetACUCTeam.mockImplementation(async () => {
-      concurrentRuns++;
-      maxConcurrentRuns = Math.max(maxConcurrentRuns, concurrentRuns);
-      await new Promise(r => setTimeout(r, 20));
-      concurrentRuns--;
-      return makeAcucChunk(100);
-    });
-    mockEntityGet.mockResolvedValue(makeEntity(0));
-
-    await Promise.all([
-      svc.reserveCredits({ teamId: "team-1", value: 1 }),
-      svc.reserveCredits({ teamId: "team-1", value: 1 }),
-    ]);
-
-    // Guard: verify backfill actually ran so the concurrency assertion below is
-    // not trivially satisfied by _backfillUsageIfNeeded never executing.
-    // Two runs × 2 modes (scrape + extract) = 4 total getACUCTeam calls.
-    expect(mockGetACUCTeam.mock.calls.length).toBeGreaterThanOrEqual(2);
-
-    // Each backfill run calls getACUCTeam for 2 modes concurrently (scrape +
-    // extract). With serialisation, at most one run executes at a time, so the
-    // peak concurrent call count is 2 (1 run × 2 modes). Without serialisation
-    // all 4 calls (2 runs × 2 modes) could overlap, giving a peak of 4.
-    expect(maxConcurrentRuns).toBeLessThanOrEqual(2);
   });
 });

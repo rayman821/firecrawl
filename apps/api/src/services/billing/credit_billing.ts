@@ -21,7 +21,6 @@ export async function billTeam(
   api_key_id: number | null,
   logger?: Logger,
 ) {
-  // Maintain the withAuth wrapper for authentication
   return withAuth(
     async (
       team_id: string,

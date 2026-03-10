@@ -1,6 +1,4 @@
 import { logger } from "../../lib/logger";
-import { getACUCTeam } from "../../controllers/auth";
-import { RateLimiterMode } from "../../types";
 import { supabase_rr_service } from "../supabase";
 import { autumnClient } from "./client";
 import type {
@@ -17,8 +15,6 @@ import type {
 const CREDITS_FEATURE_ID = "CREDITS";
 
 const AUTUMN_DEFAULT_PLAN_ID = "free";
-const AUTUMN_PROVISIONING_LOOKBACK_MS = 15 * 60 * 1000;
-
 /**
  * Size-bounded Map with FIFO eviction. When the map is at capacity the oldest
  * inserted entry is removed before inserting the new one, keeping memory usage
@@ -60,9 +56,6 @@ export class AutumnService {
   private customerOrgCache = new BoundedMap<string, string>(50_000);
   private ensuredOrgs = new BoundedSet<string>(50_000);
   private ensuredTeams = new BoundedSet<string>(50_000);
-  private backfillRunning = false;
-  /** Serialises concurrent backfills per team (see backfillUsageIfNeeded). */
-  private backfillQueue = new Map<string, Promise<void>>();
 
   private isPreviewTeam(teamId: string): boolean {
     return teamId === "preview" || teamId.startsWith("preview_");
@@ -203,11 +196,6 @@ export class AutumnService {
     }
   }
 
-  private getFeatureUsage(entity: unknown, featureId: string): number {
-    const usage = (entity as any)?.balances?.[featureId]?.usage;
-    return typeof usage === "number" ? usage : 0;
-  }
-
   /**
    * Ensures the Autumn customer exists for an org, caching successful lookups in-process.
    */
@@ -243,7 +231,7 @@ export class AutumnService {
     if (this.ensuredTeams.has(teamId)) return;
 
     try {
-      const resolvedOrgId = orgId ?? await this.lookupOrgIdForTeam(teamId);
+      const resolvedOrgId = orgId ?? (await this.lookupOrgIdForTeam(teamId));
       this.customerOrgCache.set(teamId, resolvedOrgId);
       await this.ensureOrgProvisioned({ orgId: resolvedOrgId });
 
@@ -302,77 +290,6 @@ export class AutumnService {
   }
 
   /**
-   * Temporary migration shim — remove once all teams have Autumn history.
-   *
-   * Tracks the delta between Firecrawl's combined (scrape + extract) usage
-   * and Autumn's recorded usage. `currentValue` is subtracted before the
-   * comparison to avoid double-counting the event being reserved. Calls are
-   * serialised per team to prevent concurrent invocations from each replaying
-   * the full historical delta.
-   */
-  private backfillUsageIfNeeded(
-    teamId: string,
-    customerId: string,
-  ): Promise<void> {
-    const prev = this.backfillQueue.get(teamId) ?? Promise.resolve();
-    const next = prev
-      .catch(() => {}) // don't stall the queue on errors from the previous call
-      .then(() => this._backfillUsageIfNeeded(teamId, customerId));
-    this.backfillQueue.set(teamId, next);
-    // Suppress the unhandled-rejection on the derived finally-promise: when
-    // `next` rejects, `.finally()` re-rejects with the same reason and returns
-    // a new promise that needs its own rejection handler.
-    next.finally(() => {
-      if (this.backfillQueue.get(teamId) === next) {
-        this.backfillQueue.delete(teamId);
-      }
-    }).catch(() => {});
-    return next;
-  }
-
-  private async _backfillUsageIfNeeded(
-    teamId: string,
-    customerId: string,
-  ): Promise<void> {
-    // Fetch both modes in parallel so the combined Firecrawl total is
-    // comparable to Autumn's single shared TEAM_CREDITS counter.
-    const [scrapeChunk, extractChunk] = await Promise.all([
-      getACUCTeam(teamId, false, true, RateLimiterMode.Scrape),
-      getACUCTeam(teamId, false, true, RateLimiterMode.Extract),
-    ]);
-    const firecrawlTotal =
-      (scrapeChunk?.adjusted_credits_used ?? 0) +
-      (extractChunk?.adjusted_credits_used ?? 0);
-
-    // reserveCredits is called before the current event is committed to ACUC,
-    // so firecrawlTotal already excludes it — no subtraction needed.
-    if (firecrawlTotal <= 0) return;
-
-    const entity = await this.getEntity({
-      customerId,
-      entityId: teamId,
-    });
-    const autumnUsage = this.getFeatureUsage(entity, CREDITS_FEATURE_ID);
-    const delta = firecrawlTotal - autumnUsage;
-    if (delta <= 0) return;
-
-    // Use whichever chunk has period metadata; prefer scrape as the default.
-    const periodChunk = scrapeChunk ?? extractChunk;
-    await this.track({
-      customerId,
-      entityId: teamId,
-      featureId: CREDITS_FEATURE_ID,
-      value: delta,
-      properties: {
-        source: "autumn_backfill",
-        firecrawlBackfill: true,
-        periodStart: periodChunk?.sub_current_period_start ?? null,
-        periodEnd: periodChunk?.sub_current_period_end ?? null,
-      },
-    });
-  }
-
-  /**
    * Records a credit usage event in Autumn at request time.
    * Returns true on success, false if Autumn is unavailable or an error occurs.
    */
@@ -386,9 +303,6 @@ export class AutumnService {
 
     try {
       const customerId = await this.ensureTrackingContext(teamId);
-      await this.backfillUsageIfNeeded(teamId, customerId).catch(error => {
-        logger.warn("Autumn backfillUsageIfNeeded failed; continuing with direct track", { teamId, value, error });
-      });
       await this.track({
         customerId,
         entityId: teamId,
@@ -429,52 +343,6 @@ export class AutumnService {
       });
     } catch (error) {
       logger.warn("Autumn refundCredits failed", { teamId, value, error });
-    }
-  }
-
-  /**
-   * Replays recent org/team provisioning to repair missed webhook events.
-   */
-  async backfillRecentProvisioning(
-    lookbackMs = AUTUMN_PROVISIONING_LOOKBACK_MS,
-  ): Promise<void> {
-    if (!autumnClient || this.backfillRunning) return;
-
-    this.backfillRunning = true;
-    try {
-      const createdAfter = new Date(Date.now() - lookbackMs).toISOString();
-      const [orgsResult, teamsResult] = await Promise.all([
-        supabase_rr_service
-          .from("organizations")
-          .select("id,name")
-          .gte("created_at", createdAfter),
-        supabase_rr_service
-          .from("teams")
-          .select("id,org_id,name")
-          .gte("created_at", createdAfter),
-      ]);
-
-      if (orgsResult.error) throw orgsResult.error;
-      if (teamsResult.error) throw teamsResult.error;
-
-      await Promise.all(
-        (orgsResult.data ?? []).map(org =>
-          this.ensureOrgProvisioned({ orgId: org.id, name: org.name }),
-        ),
-      );
-      await Promise.all(
-        (teamsResult.data ?? []).map(team =>
-          this.ensureTeamProvisioned({
-            teamId: team.id,
-            orgId: team.org_id,
-            name: team.name,
-          }),
-        ),
-      );
-    } catch (error) {
-      logger.warn("Autumn provisioning backfill failed", { error });
-    } finally {
-      this.backfillRunning = false;
     }
   }
 }
