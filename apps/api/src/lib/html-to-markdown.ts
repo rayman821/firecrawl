@@ -51,6 +51,46 @@ class GoMarkdownConverter {
   }
 }
 
+// Extract content words from markdown, stripping syntax
+function extractWords(md: string): Set<string> {
+  return new Set(
+    md
+      .replace(/```[\s\S]*?```/g, " ") // strip code blocks (keep words outside)
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // [text](url) → text
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, " ") // strip images
+      .replace(/[#*_~`|>\-\[\]()\\]/g, " ") // strip markdown punctuation
+      .replace(/https?:\/\/\S+/g, " ") // strip bare URLs
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 1),
+  );
+}
+
+// Parse markdown table cells as flat array of trimmed cell text
+function extractTableCells(md: string): string[] {
+  const cells: string[] = [];
+  for (const line of md.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|") || /^\|[\s\-:|]+\|$/.test(trimmed)) continue; // skip separators
+    for (const cell of trimmed.split("|").slice(1, -1)) {
+      const text = cell.trim();
+      if (text) cells.push(text.toLowerCase());
+    }
+  }
+  return cells;
+}
+
+// Count structural markdown elements
+function countStructure(md: string) {
+  return {
+    headings: (md.match(/^#{1,6}\s/gm) || []).length,
+    links: (md.match(/\[[^\]]+\]\([^)]+\)/g) || []).length,
+    codeBlocks: (md.match(/^```/gm) || []).length / 2,
+    images: (md.match(/!\[[^\]]*\]\([^)]+\)/g) || []).length,
+    listItems: (md.match(/^[\s]*[-*+]\s|^[\s]*\d+\.\s/gm) || []).length,
+  };
+}
+
 function shadowSimdConversion(
   html: string,
   goResult: string,
@@ -62,44 +102,50 @@ function shadowSimdConversion(
     const simdResult = convertHtmlToMarkdownSimd(html);
     const durationMs = performance.now() - start;
 
-    const match = simdResult === goResult;
-    const htmlLen = html.length;
-    const goLen = goResult.length;
-    const simdLen = simdResult.length;
-
-    if (match) {
-      contextLogger.info("simd-shadow: match", {
-        module: "html-to-markdown",
-        shadow: true,
-        match: true,
-        durationMs: Math.round(durationMs * 100) / 100,
-        htmlLen,
-        goLen,
-        simdLen,
-        ...(requestId ? { requestId } : {}),
-      });
-    } else {
-      // Find first differing position for debugging
-      let diffPos = 0;
-      const minLen = Math.min(goLen, simdLen);
-      while (diffPos < minLen && goResult[diffPos] === simdResult[diffPos]) {
-        diffPos++;
-      }
-
-      contextLogger.info("simd-shadow: mismatch", {
-        module: "html-to-markdown",
-        shadow: true,
-        match: false,
-        durationMs: Math.round(durationMs * 100) / 100,
-        htmlLen,
-        goLen,
-        simdLen,
-        diffPos,
-        goSnippet: goResult.slice(Math.max(0, diffPos - 20), diffPos + 80),
-        simdSnippet: simdResult.slice(Math.max(0, diffPos - 20), diffPos + 80),
-        ...(requestId ? { requestId } : {}),
-      });
+    // Word coverage: are all content words from Go present in SIMD?
+    const goWords = extractWords(goResult);
+    const simdWords = extractWords(simdResult);
+    const missingWords: string[] = [];
+    for (const w of goWords) {
+      if (!simdWords.has(w)) missingWords.push(w);
     }
+    const wordCoverage =
+      goWords.size > 0 ? 1 - missingWords.length / goWords.size : 1;
+
+    // Table cell comparison
+    const goCells = extractTableCells(goResult);
+    const simdCells = extractTableCells(simdResult);
+    const simdCellSet = new Set(simdCells);
+    const missingCells = goCells.filter((c) => !simdCellSet.has(c));
+    const tableCellCoverage =
+      goCells.length > 0 ? 1 - missingCells.length / goCells.length : 1;
+
+    // Structural comparison
+    const goStruct = countStructure(goResult);
+    const simdStruct = countStructure(simdResult);
+
+    contextLogger.info("simd-shadow", {
+      module: "html-to-markdown",
+      shadow: true,
+      durationMs: Math.round(durationMs * 100) / 100,
+      htmlLen: html.length,
+      goLen: goResult.length,
+      simdLen: simdResult.length,
+      tokenSavings: goResult.length - simdResult.length,
+      wordCoverage: Math.round(wordCoverage * 1000) / 1000,
+      missingWordCount: missingWords.length,
+      missingWordSample: missingWords.slice(0, 10).join(", "),
+      tableCellCoverage: Math.round(tableCellCoverage * 1000) / 1000,
+      missingCellCount: missingCells.length,
+      tableCountGo: goCells.length,
+      tableCountSimd: simdCells.length,
+      headingDiff: simdStruct.headings - goStruct.headings,
+      linkDiff: simdStruct.links - goStruct.links,
+      codeBlockDiff: simdStruct.codeBlocks - goStruct.codeBlocks,
+      imageDiff: simdStruct.images - goStruct.images,
+      listItemDiff: simdStruct.listItems - goStruct.listItems,
+      ...(requestId ? { requestId } : {}),
+    });
   } catch (error) {
     contextLogger.error("simd-shadow: error", {
       module: "html-to-markdown",
