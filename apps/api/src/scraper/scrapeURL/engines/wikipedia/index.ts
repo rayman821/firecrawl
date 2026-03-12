@@ -3,19 +3,27 @@ import { EngineScrapeResult } from "..";
 import { Meta } from "../..";
 import { config } from "../../../../config";
 import { EngineError } from "../../error";
+import { getRedisConnection } from "../../../../services/queue-service";
 
 const WIKIMEDIA_AUTH_URL =
   "https://auth.enterprise.wikimedia.com/v1/login";
 const WIKIMEDIA_API_BASE =
   "https://api.enterprise.wikimedia.com/v2";
 
-let cachedToken: { accessToken: string; expiresAt: number } | null = null;
+const REDIS_TOKEN_KEY = "wikipedia_enterprise:access_token";
 
 async function getAccessToken(
   logger: Meta["logger"],
 ): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt) {
-    return cachedToken.accessToken;
+  const redis = getRedisConnection();
+
+  try {
+    const cached = await redis.get(REDIS_TOKEN_KEY);
+    if (cached) {
+      return cached;
+    }
+  } catch (error) {
+    logger.warn("Failed to read Wikipedia token from Redis, will re-authenticate", { error });
   }
 
   const username = config.WIKIPEDIA_ENTERPRISE_USERNAME;
@@ -47,13 +55,23 @@ async function getAccessToken(
     expires_in: number;
   };
 
-  // Cache with 5-minute safety margin
-  cachedToken = {
-    accessToken: data.access_token,
-    expiresAt: Date.now() + (data.expires_in - 300) * 1000,
-  };
+  const ttlSeconds = Math.max(data.expires_in - 300, 60);
 
-  return cachedToken.accessToken;
+  try {
+    await redis.set(REDIS_TOKEN_KEY, data.access_token, "EX", ttlSeconds);
+  } catch (error) {
+    logger.warn("Failed to cache Wikipedia token in Redis", { error });
+  }
+
+  return data.access_token;
+}
+
+function clearCachedToken(logger: Meta["logger"]): void {
+  try {
+    getRedisConnection().del(REDIS_TOKEN_KEY).catch(() => {});
+  } catch {
+    logger.warn("Failed to clear Wikipedia token from Redis");
+  }
 }
 
 // Maps Wikimedia project hostnames to project identifiers used by the Enterprise API.
@@ -239,7 +257,7 @@ export async function scrapeURLWithWikipedia(
   }
 
   if (response.status === 401 || response.status === 403) {
-    cachedToken = null;
+    clearCachedToken(meta.logger);
     throw new EngineError(
       `Wikipedia Enterprise API authorization failed (${response.status}). Check credentials.`,
     );
