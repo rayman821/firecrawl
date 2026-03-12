@@ -542,6 +542,8 @@ def prepare_scrape_options(options: Optional[ScrapeOptions]) -> Optional[Dict[st
                             if isinstance(fmt, str):
                                 if fmt == "json":
                                     raise ValueError("json format must be an object with 'type', 'prompt', and 'schema' fields")
+                                if fmt == "query":
+                                    raise ValueError("query format must be an object with 'type' and 'prompt' fields")
                                 converted_formats.append(_convert_format_string(fmt))
                             elif isinstance(fmt, dict):
                                 fmt_type = _convert_format_string(fmt.get('type')) if fmt.get('type') else None
