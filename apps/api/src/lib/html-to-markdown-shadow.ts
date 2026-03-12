@@ -6,8 +6,8 @@ function extractWords(md: string): Set<string> {
   return new Set(
     md
       .replace(/```[\s\S]*?```/g, " ") // strip code blocks (keep words outside)
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, " ") // strip images (before links)
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // [text](url) → text
-      .replace(/!\[[^\]]*\]\([^)]*\)/g, " ") // strip images
       .replace(/[#*_~`|>\-\[\]()\\]/g, " ") // strip markdown punctuation
       .replace(/https?:\/\/\S+/g, " ") // strip bare URLs
       .toLowerCase()
