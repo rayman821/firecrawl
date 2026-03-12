@@ -492,6 +492,9 @@ class ScrapeFormats(BaseModel):
                     raise ValueError("query format must be an object with 'type' and 'prompt' fields")
                 normalized_formats.append(Format(type=format_item))
             elif isinstance(format_item, dict):
+                # Reject query dicts missing prompt early
+                if format_item.get('type') == 'query' and not format_item.get('prompt'):
+                    raise ValueError("query format requires a 'prompt' field")
                 # Preserve dicts as-is to avoid dropping custom fields like 'schema'
                 normalized_formats.append(format_item)
             elif isinstance(format_item, Format):
