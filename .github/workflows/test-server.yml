@@ -252,10 +252,14 @@ jobs:
 
           failed = []
           passed = []
+          skipped = []
           for tc in tree.iter("testcase"):
               name = tc.get("name", "unknown")
               suite = tc.get("classname", "")
               t = tc.get("time", "?")
+              if tc.find("skipped") is not None:
+                  skipped.append((suite, name, t))
+                  continue
               fail = tc.find("failure")
               if fail is None:
                   fail = tc.find("error")
@@ -291,6 +295,8 @@ jobs:
                   out(f"  FAIL  {suite} > {name} ({t}s)", f)
               for suite, name, t in passed:
                   out(f"  PASS  {suite} > {name} ({t}s)", f)
+              for suite, name, t in skipped:
+                  out(f"  SKIP  {suite} > {name} ({t}s)", f)
 
           if int(failures) > 0 or int(errors) > 0:
               print(f"::error::{failures} failure(s), {errors} error(s)")
