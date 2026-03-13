@@ -75,9 +75,12 @@ export async function shadowSimdConversion(
     const goStruct = countStructure(goResult);
     const simdStruct = countStructure(simdResult);
 
+    const match = wordCoverage >= 0.95 && tableCellCoverage >= 0.95;
+
     contextLogger.info("simd-shadow", {
       module: "html-to-markdown",
       shadow: true,
+      match,
       simdMs: Math.round(durationMs * 100) / 100,
       goMs: Math.round(goDurationMs * 100) / 100,
       speedup: goDurationMs > 0 ? Math.round((goDurationMs / durationMs) * 10) / 10 : 0,
