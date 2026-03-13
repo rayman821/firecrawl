@@ -467,8 +467,7 @@ export function shouldUseIndex(meta: Meta) {
     meta.options.maxAge !== 0 &&
     (meta.options.headers === undefined ||
       Object.keys(meta.options.headers).length === 0) &&
-    (meta.options.actions === undefined || meta.options.actions.length === 0) &&
-    meta.options.proxy !== "stealth"
+    (meta.options.actions === undefined || meta.options.actions.length === 0)
   );
 }
 
@@ -536,6 +535,16 @@ export async function buildFallbackList(meta: Meta): Promise<
         : [meta.internalOptions.forceEngine]
       : _engines;
 
+  // Index engines are cache layers, not real scraping engines. They may fail
+  // priority scoring (e.g. stealthProxy flag, priority 20, not supported by
+  // index) but should still be tried first when shouldUseIndex() approved them.
+  // We capture their scoring results during the main loop and re-inject after.
+  const indexEngineNames: Set<Engine> = new Set(["index", "index;documents"]);
+  const indexEngineScoring = new Map<
+    Engine,
+    { supportScore: number; unsupportedFeatures: Set<FeatureFlag> }
+  >();
+
   for (const engine of currentEngines) {
     const supportedFlags = new Set([
       ...Object.entries(engineOptions[engine].features)
@@ -558,12 +567,26 @@ export async function buildFallbackList(meta: Meta): Promise<
 
     if (supportScore >= priorityThreshold) {
       selectedEngines.push({ engine, supportScore, unsupportedFeatures });
+    } else if (indexEngineNames.has(engine)) {
+      indexEngineScoring.set(engine, { supportScore, unsupportedFeatures });
     }
   }
 
-  if (selectedEngines.some(x => engineOptions[x.engine].quality > 0)) {
+  for (const [engine, scoring] of indexEngineScoring) {
+    if (!selectedEngines.some(x => x.engine === engine)) {
+      selectedEngines.push({ engine, ...scoring });
+    }
+  }
+
+  if (
+    selectedEngines.some(
+      x =>
+        engineOptions[x.engine].quality > 0 && !indexEngineNames.has(x.engine),
+    )
+  ) {
     selectedEngines = selectedEngines.filter(
-      x => engineOptions[x.engine].quality > 0,
+      x =>
+        engineOptions[x.engine].quality > 0 || indexEngineNames.has(x.engine),
     );
   }
 
