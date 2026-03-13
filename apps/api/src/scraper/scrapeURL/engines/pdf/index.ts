@@ -23,7 +23,7 @@ import type { PDFMode } from "../../../../controllers/v2/types";
 import { processPdf, detectPdf } from "@mendable/firecrawl-rs";
 import { MAX_FILE_SIZE, MILLISECONDS_PER_PAGE } from "./types";
 import type { PDFProcessorResult } from "./types";
-import { emitNativeLogs } from "../../../../lib/native-logging";
+import { emitNativeLogs, extractAndEmitNativeLogs } from "../../../../lib/native-logging";
 import { withSpan, setSpanAttributes } from "../../../../lib/otel-tracer";
 import { scrapePDFWithRunPodMU } from "./runpodMU";
 import { scrapePDFWithParsePDF } from "./pdfParse";
@@ -185,6 +185,7 @@ export async function scrapePDF(meta: Meta): Promise<EngineScrapeResult> {
           : detection.pageCount;
         metadataTitle = detection.title ?? undefined;
       } catch (error) {
+        extractAndEmitNativeLogs(error, meta.logger, "pdf.detect");
         logger.warn("detectPdf failed", {
           error,
           url: meta.rewrittenUrl ?? meta.url,
@@ -282,6 +283,7 @@ export async function scrapePDF(meta: Meta): Promise<EngineScrapeResult> {
         if (error instanceof PDFOCRRequiredError) {
           throw error;
         }
+        extractAndEmitNativeLogs(error, meta.logger, "pdf.process");
         logger.warn("processPdf failed, falling back to MU/PdfParse", {
           error,
           url: meta.rewrittenUrl ?? meta.url,

@@ -1,5 +1,7 @@
 import type { Logger } from "winston";
 
+const NATIVE_LOGS_SEPARATOR = "\n__native_logs__:";
+
 /** Matches the NativeLogEntry struct from Rust (@mendable/firecrawl-rs). */
 export interface NativeLogEntry {
   level: string;
@@ -7,6 +9,31 @@ export interface NativeLogEntry {
   message: string;
   fields: Record<string, unknown>;
   timestampMs: number;
+}
+
+/**
+ * Extract native logs embedded in a NAPI error message by `embed_logs_in_error`.
+ * Emits them through the logger and returns the cleaned error message.
+ */
+export function extractAndEmitNativeLogs(
+  error: unknown,
+  parentLogger: Logger,
+  module: string,
+): void {
+  if (!(error instanceof Error)) return;
+  const idx = error.message.indexOf(NATIVE_LOGS_SEPARATOR);
+  if (idx === -1) return;
+
+  const logsJson = error.message.slice(idx + NATIVE_LOGS_SEPARATOR.length);
+  // Clean the error message so Sentry gets a readable string
+  error.message = error.message.slice(0, idx);
+
+  try {
+    const logs: NativeLogEntry[] = JSON.parse(logsJson);
+    emitNativeLogs(logs, parentLogger, module);
+  } catch {
+    // JSON parse failed — leave the original error as-is
+  }
 }
 
 /**

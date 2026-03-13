@@ -124,11 +124,14 @@ pub struct TracingResult<T> {
 
 /// Run a closure with tracing enabled, capturing all log events.
 /// Wraps the closure in `catch_unwind` for panic safety.
+///
+/// Returns `TracingResult<napi::Result<T>>` so that logs are **always**
+/// available — even when the closure returns `Err` or panics.
 pub fn with_native_tracing<T, F>(
   ctx: Option<&NativeContext>,
   module: &str,
   f: F,
-) -> napi::Result<TracingResult<T>>
+) -> TracingResult<napi::Result<T>>
 where
   F: FnOnce() -> napi::Result<T>,
 {
@@ -175,10 +178,26 @@ where
 
   let collected = logs.lock().map(|l| l.clone()).unwrap_or_default();
 
-  result.map(|value| TracingResult {
-    value,
+  TracingResult {
+    value: result,
     logs: collected,
-  })
+  }
+}
+
+/// Append serialized logs to a NAPI error so they survive the FFI boundary.
+/// The TS side can extract them from `error.message` via `extractNativeLogs`.
+pub fn embed_logs_in_error(err: napi::Error, logs: &[NativeLogEntry]) -> napi::Error {
+  if logs.is_empty() {
+    return err;
+  }
+  if let Ok(logs_json) = serde_json::to_string(logs) {
+    napi::Error::new(
+      err.status,
+      format!("{}\n__native_logs__:{logs_json}", err.reason),
+    )
+  } else {
+    err
+  }
 }
 
 #[cfg(test)]
@@ -187,16 +206,16 @@ mod tests {
 
   #[test]
   fn test_collects_logs() {
-    let result = with_native_tracing(None, "test", || {
+    let traced = with_native_tracing(None, "test", || {
       tracing::info!("hello from rust");
       Ok(42)
-    })
-    .unwrap();
+    });
 
-    assert_eq!(result.value, 42);
-    assert_eq!(result.logs.len(), 1);
-    assert_eq!(result.logs[0].level, "info");
-    assert!(result.logs[0].message.contains("hello from rust"));
+    let value = traced.value.unwrap();
+    assert_eq!(value, 42);
+    assert_eq!(traced.logs.len(), 1);
+    assert_eq!(traced.logs[0].level, "info");
+    assert!(traced.logs[0].message.contains("hello from rust"));
   }
 
   #[test]
@@ -205,32 +224,35 @@ mod tests {
       scrape_id: "test-123".to_string(),
       url: "https://example.com".to_string(),
     };
-    let result = with_native_tracing(Some(&ctx), "pdf", || {
+    let traced = with_native_tracing(Some(&ctx), "pdf", || {
       tracing::warn!("something odd");
       Ok("ok")
-    })
-    .unwrap();
+    });
 
-    assert_eq!(result.value, "ok");
-    assert_eq!(result.logs.len(), 1);
-    assert_eq!(result.logs[0].level, "warn");
+    assert_eq!(traced.value.unwrap(), "ok");
+    assert_eq!(traced.logs.len(), 1);
+    assert_eq!(traced.logs[0].level, "warn");
   }
 
   #[test]
-  fn test_captures_panic() {
-    let result: napi::Result<TracingResult<()>> = with_native_tracing(None, "test", || {
+  fn test_captures_panic_with_logs() {
+    let traced: TracingResult<napi::Result<()>> = with_native_tracing(None, "test", || {
       panic!("test panic");
     });
 
-    assert!(result.is_err());
-    let err = result.unwrap_err();
+    assert!(traced.value.is_err());
+    let err = traced.value.unwrap_err();
     assert!(err.reason.contains("test panic"));
     assert!(err.reason.contains("Backtrace"));
+    // Panic log is preserved even though the closure failed
+    assert!(!traced.logs.is_empty());
+    assert_eq!(traced.logs[0].level, "error");
+    assert!(traced.logs[0].message.contains("test panic"));
   }
 
   #[test]
-  fn test_captures_error_with_logs() {
-    let result: napi::Result<TracingResult<()>> = with_native_tracing(None, "test", || {
+  fn test_error_preserves_logs() {
+    let traced: TracingResult<napi::Result<()>> = with_native_tracing(None, "test", || {
       tracing::info!("before error");
       Err(napi::Error::new(
         napi::Status::GenericFailure,
@@ -238,7 +260,10 @@ mod tests {
       ))
     });
 
-    // The error propagates, but we lose the logs since TracingResult is not constructed
-    assert!(result.is_err());
+    assert!(traced.value.is_err());
+    // Logs are preserved even on error paths
+    assert_eq!(traced.logs.len(), 1);
+    assert_eq!(traced.logs[0].level, "info");
+    assert!(traced.logs[0].message.contains("before error"));
   }
 }

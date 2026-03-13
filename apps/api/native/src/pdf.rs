@@ -2,7 +2,7 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use pdf_inspector::{PdfOptions, PdfType, process_pdf_with_options as rust_process_pdf};
 
-use crate::logging::{with_native_tracing, NativeContext, NativeLogEntry};
+use crate::logging::{embed_logs_in_error, with_native_tracing, NativeContext, NativeLogEntry};
 
 #[napi(object)]
 pub struct PdfProcessResult {
@@ -71,11 +71,15 @@ pub fn process_pdf(
     );
 
     Ok(to_napi_result(result))
-  })?;
+  });
 
-  let mut result = traced.value;
-  result.logs = traced.logs;
-  Ok(result)
+  match traced.value {
+    Ok(mut result) => {
+      result.logs = traced.logs;
+      Ok(result)
+    }
+    Err(err) => Err(embed_logs_in_error(err, &traced.logs)),
+  }
 }
 
 /// Fast metadata-only detection: page count, title, type, confidence.
@@ -102,9 +106,13 @@ pub fn detect_pdf(
     );
 
     Ok(to_napi_result(result))
-  })?;
+  });
 
-  let mut result = traced.value;
-  result.logs = traced.logs;
-  Ok(result)
+  match traced.value {
+    Ok(mut result) => {
+      result.logs = traced.logs;
+      Ok(result)
+    }
+    Err(err) => Err(embed_logs_in_error(err, &traced.logs)),
+  }
 }
