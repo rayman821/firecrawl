@@ -269,34 +269,61 @@ jobs:
               else:
                   passed.append((suite, name, t))
 
-          def out(line, f):
+          def log(line):
               print(line)
+
+          def md(line, f):
               f.write(line + "\n")
 
+          # Print plain text to step log
+          log(f"Test Report ({label}): {tests} tests, {failures} failures, {errors} errors, {time_s}s")
+          if failed:
+              log("")
+              log("Failed tests:")
+              for suite, name, t, msg in failed:
+                  log(f"  FAIL  {suite} > {name} ({t}s)")
+                  if msg:
+                      log(f"        {msg}")
+          log("")
+          log("All tests:")
+          for suite, name, t, _msg in failed:
+              log(f"  ❌ FAIL  {suite} > {name} ({t}s)")
+          for suite, name, t in passed:
+              log(f"  ✅ PASS  {suite} > {name} ({t}s)")
+          for suite, name, t in skipped:
+              log(f"  ⏭️ SKIP  {suite} > {name} ({t}s)")
+
+          # Write markdown tables to step summary
           with open(summary, "a") as f:
-              out(f"## Test Report ({label})", f)
-              out("| Tests | Failures | Errors | Time |", f)
-              out("|-------|----------|--------|------|", f)
-              out(f"| {tests} | {failures} | {errors} | {time_s}s |", f)
-              out("", f)
+              status = "❌" if int(failures) > 0 or int(errors) > 0 else "✅"
+              md(f"## {status} Test Report ({label})", f)
+              md("| 🧪 Tests | ❌ Failures | 💥 Errors | ⏱️ Time |", f)
+              md("|----------|------------|----------|---------|", f)
+              md(f"| {tests} | {failures} | {errors} | {time_s}s |", f)
+              md("", f)
 
               if failed:
-                  out("### Failed tests", f)
-                  out("", f)
+                  md("### ❌ Failed tests", f)
+                  md("", f)
+                  md("| Suite | Test | Time | Message |", f)
+                  md("|-------|------|------|---------|", f)
                   for suite, name, t, msg in failed:
-                      out(f"  FAIL  {suite} > {name} ({t}s)", f)
-                      if msg:
-                          out(f"        {msg}", f)
-                  out("", f)
+                      md(f"| `{suite}` | **{name}** | {t}s | {msg} |", f)
+                  md("", f)
 
-              out("### All tests", f)
-              out("", f)
+              md("<details>", f)
+              md(f"<summary>📋 All tests ({len(passed)} passed, {len(failed)} failed, {len(skipped)} skipped)</summary>", f)
+              md("", f)
+              md("| Status | Suite | Test | Time |", f)
+              md("|--------|-------|------|------|", f)
               for suite, name, t, _msg in failed:
-                  out(f"  FAIL  {suite} > {name} ({t}s)", f)
+                  md(f"| ❌ | `{suite}` | {name} | {t}s |", f)
               for suite, name, t in passed:
-                  out(f"  PASS  {suite} > {name} ({t}s)", f)
+                  md(f"| ✅ | `{suite}` | {name} | {t}s |", f)
               for suite, name, t in skipped:
-                  out(f"  SKIP  {suite} > {name} ({t}s)", f)
+                  md(f"| ⏭️ | `{suite}` | {name} | {t}s |", f)
+              md("", f)
+              md("</details>", f)
 
           if int(failures) > 0 or int(errors) > 0:
               print(f"::error::{failures} failure(s), {errors} error(s)")
