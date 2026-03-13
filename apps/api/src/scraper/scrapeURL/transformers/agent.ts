@@ -61,6 +61,7 @@ export async function performAgent(
       const markdown = await parseMarkdown(html, {
         logger: meta.logger,
         requestId,
+        url: meta.url,
       });
       document.markdown = markdown;
     }

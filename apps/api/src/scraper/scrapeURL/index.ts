@@ -388,7 +388,7 @@ async function scrapeURLLoopIter(
           meta.url,
           scrapeOptions.parse({ onlyMainContent: true }),
         ),
-        { logger: meta.logger, requestId },
+        { logger: meta.logger, requestId, url: meta.url },
       );
 
       if (checkMarkdown.trim().length === 0) {
@@ -398,7 +398,7 @@ async function scrapeURLLoopIter(
             meta.url,
             scrapeOptions.parse({ onlyMainContent: false }),
           ),
-          { logger: meta.logger, requestId },
+          { logger: meta.logger, requestId, url: meta.url },
         );
       }
     }
