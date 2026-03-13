@@ -243,7 +243,7 @@ jobs:
           tree = ET.parse('$JUNIT')
           failures = []
           for tc in tree.iter('testcase'):
-              fail = tc.find('failure')
+              fail = tc.find('failure') or tc.find('error')
               if fail is not None:
                   name = tc.get('name', 'unknown')
                   suite = tc.get('classname', '')
