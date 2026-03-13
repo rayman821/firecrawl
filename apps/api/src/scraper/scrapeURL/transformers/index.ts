@@ -127,7 +127,6 @@ async function deriveMarkdownFromHTML(
   document.markdown = await parseMarkdown(document.html, {
     logger: meta.logger,
     requestId,
-    url: meta.url,
   });
 
   if (
@@ -150,7 +149,6 @@ async function deriveMarkdownFromHTML(
     document.markdown = await parseMarkdown(document.html, {
       logger: meta.logger,
       requestId,
-      url: meta.url,
     });
 
     meta.logger.info("Fallback to full content extraction completed", {

@@ -47,7 +47,6 @@ export async function shadowSimdConversion(
   goDurationMs: number,
   contextLogger: Logger,
   requestId?: string,
-  url?: string,
 ) {
   try {
     const start = performance.now();
@@ -99,33 +98,6 @@ export async function shadowSimdConversion(
       imageDiff: simdStruct.images - goStruct.images,
       listItemDiff: simdStruct.listItems - goStruct.listItems,
       ...(requestId ? { requestId } : {}),
-      ...(url ? { url } : {}),
-    });
-
-    console.log("simd-shadow", {
-      module: "html-to-markdown",
-      shadow: true,
-      simdMs: Math.round(durationMs * 100) / 100,
-      goMs: Math.round(goDurationMs * 100) / 100,
-      speedup: goDurationMs > 0 ? Math.round((goDurationMs / durationMs) * 10) / 10 : 0,
-      htmlLen: html.length,
-      goLen: goResult.length,
-      simdLen: simdResult.length,
-      tokenSavings: goResult.length - simdResult.length,
-      wordCoverage: Math.round(wordCoverage * 1000) / 1000,
-      missingWordCount: missingWords.length,
-      missingWordSample: missingWords.slice(0, 10).join(", "),
-      tableCellCoverage: Math.round(tableCellCoverage * 1000) / 1000,
-      missingCellCount: missingCells.length,
-      tableCountGo: goCells.length,
-      tableCountSimd: simdCells.length,
-      headingDiff: simdStruct.headings - goStruct.headings,
-      linkDiff: simdStruct.links - goStruct.links,
-      codeBlockDiff: simdStruct.codeBlocks - goStruct.codeBlocks,
-      imageDiff: simdStruct.images - goStruct.images,
-      listItemDiff: simdStruct.listItems - goStruct.listItems,
-      ...(requestId ? { requestId } : {}),
-      ...(url ? { url } : {}),
     });
   } catch (error) {
     contextLogger.error("simd-shadow: error", {

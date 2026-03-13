@@ -10,7 +10,7 @@ import { convertHTMLToMarkdownWithHttpService } from "./html-to-markdown-client"
 import { postProcessMarkdown } from "@mendable/firecrawl-rs";
 import { shadowSimdConversion } from "./html-to-markdown-shadow";
 
-const SIMD_SHADOW_SAMPLE_RATE = 1
+const SIMD_SHADOW_SAMPLE_RATE = 0.2; // 20% of traffic
 
 // TODO: add a timeout to the Go parser
 
@@ -59,7 +59,6 @@ export async function parseMarkdown(
   context?: {
     logger?: Logger;
     requestId?: string;
-    url?: string;
   },
 ): Promise<string> {
   if (!html) {
@@ -68,7 +67,6 @@ export async function parseMarkdown(
 
   const contextLogger = context?.logger || logger;
   const requestId = context?.requestId;
-  const url = context?.url;
 
   // Try HTTP service first if enabled
   if (config.HTML_TO_MARKDOWN_SERVICE_URL) {
@@ -80,7 +78,7 @@ export async function parseMarkdown(
       });
       markdownContent = await postProcessMarkdown(markdownContent);
       const goMs = performance.now() - goStart;
-      shadowSimdConversion(html, markdownContent, goMs, contextLogger, requestId, url)
+      if (Math.random() < SIMD_SHADOW_SAMPLE_RATE) setImmediate(() => shadowSimdConversion(html, markdownContent, goMs, contextLogger, requestId));
       return markdownContent;
     } catch (error) {
       contextLogger.error(
@@ -103,7 +101,7 @@ export async function parseMarkdown(
       let markdownContent = await converter.convertHTMLToMarkdown(html);
       markdownContent = await postProcessMarkdown(markdownContent);
       const goMs = performance.now() - goStart;
-      if (Math.random() < SIMD_SHADOW_SAMPLE_RATE) setImmediate(() => shadowSimdConversion(html, markdownContent, goMs, contextLogger, requestId, url));
+      if (Math.random() < SIMD_SHADOW_SAMPLE_RATE) setImmediate(() => shadowSimdConversion(html, markdownContent, goMs, contextLogger, requestId));
       return markdownContent;
     }
   } catch (error) {
@@ -154,7 +152,7 @@ export async function parseMarkdown(
     let markdownContent = await turndownService.turndown(html);
     markdownContent = await postProcessMarkdown(markdownContent);
     const goMs = performance.now() - goStart;
-    if (Math.random() < SIMD_SHADOW_SAMPLE_RATE) setImmediate(() => shadowSimdConversion(html, markdownContent, goMs, contextLogger, requestId, url));
+    if (Math.random() < SIMD_SHADOW_SAMPLE_RATE) setImmediate(() => shadowSimdConversion(html, markdownContent, goMs, contextLogger, requestId));
     return markdownContent;
   } catch (error) {
     contextLogger.error("Error converting HTML to Markdown", { error });
