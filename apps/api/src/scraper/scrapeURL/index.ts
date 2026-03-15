@@ -541,6 +541,7 @@ async function scrapeURLLoop(meta: Meta): Promise<ScrapeUrlResponse> {
     meta.abort.throwIfAborted();
 
     let result: EngineScrapeResultWithContext | null = null;
+    let savedDnsError: DNSResolutionError | null = null;
 
     while (remainingEngines.length > 0) {
       const { engine, unsupportedFeatures } = remainingEngines.shift()!;
@@ -640,12 +641,24 @@ async function scrapeURLLoop(meta: Meta): Promise<ScrapeUrlResponse> {
                   error: error.error,
                 },
               );
+            } else if (error.error instanceof DNSResolutionError) {
+              // DNS errors may be engine-specific (e.g. fire-engine resolves DNS
+              // on its own infrastructure). Save the error and allow fallback to
+              // the next engine. If all engines fail, we'll throw this error.
+              savedDnsError = error.error;
+              meta.logger.warn(
+                "Engine " +
+                  error.engine +
+                  " encountered DNS resolution error, trying next engine.",
+                {
+                  error: error.error,
+                },
+              );
             } else if (
               error.error instanceof AddFeatureError ||
               error.error instanceof RemoveFeatureError ||
               error.error instanceof SiteError ||
               error.error instanceof SSLError ||
-              error.error instanceof DNSResolutionError ||
               error.error instanceof ActionError ||
               error.error instanceof UnsupportedFileError ||
               error.error instanceof PDFAntibotError ||
@@ -743,6 +756,11 @@ async function scrapeURLLoop(meta: Meta): Promise<ScrapeUrlResponse> {
         "engine.no_engines_left": true,
         "engine.engines_attempted": enginesAttempted.join(","),
       });
+      // If all engines failed due to DNS resolution, throw the saved DNS error
+      // so the user gets a specific, actionable error message.
+      if (savedDnsError) {
+        throw savedDnsError;
+      }
       throw new NoEnginesLeftError(fallbackList.map(x => x.engine));
     }
 
