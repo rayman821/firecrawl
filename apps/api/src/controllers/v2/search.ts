@@ -18,9 +18,8 @@ import {
   captureExceptionWithZdrCheck,
 } from "../../services/sentry";
 import { executeSearch } from "../../search/execute";
-import {
-  type BillingMetadata,
-} from "../../services/billing/types";
+import type { BillingMetadata } from "../../services/billing/types";
+import { getSearchZDR } from "../../lib/zdr-helpers";
 
 export async function searchController(
   req: RequestWithAuth<{}, SearchResponse, SearchRequest>,
@@ -36,10 +35,10 @@ export async function searchController(
     teamId: req.auth.team_id,
     module: "api/v2",
     method: "searchController",
-    zeroDataRetention: req.acuc?.flags?.forceZDR,
+    zeroDataRetention: getSearchZDR(req.acuc?.flags) === "forced",
   });
 
-  if (req.acuc?.flags?.forceZDR) {
+  if (getSearchZDR(req.acuc?.flags) === "forced") {
     return res.status(400).json({
       success: false,
       error:
