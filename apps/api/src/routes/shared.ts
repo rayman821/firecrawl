@@ -121,7 +121,9 @@ export function checkCreditsMiddleware(
 
       const requestedCredits = minimum ?? 1;
       const useAutumnCheck =
-        isAutumnCheckEnabled() && !req.acuc?.is_extract;
+        !!req.auth.org_id &&
+        isAutumnCheckEnabled(req.auth.org_id) &&
+        !req.acuc?.is_extract;
       const legacyCheck = await checkTeamCredits(
         req.acuc ?? null,
         req.auth.team_id,
@@ -142,12 +144,7 @@ export function checkCreditsMiddleware(
         });
 
         if (autumnAllowed === null) {
-          ({ success, remainingCredits, chunk } = await checkTeamCredits(
-            req.acuc ?? null,
-            req.auth.team_id,
-            requestedCredits,
-            { runSideEffects: true },
-          ));
+          ({ success, remainingCredits, chunk } = legacyCheck);
         } else {
           if (autumnAllowed !== legacyCheck.success) {
             logger.warn("Autumn check result diverged from legacy credit gate", {
@@ -247,9 +244,9 @@ export function authMiddleware(
         }
       }
 
-      const { team_id, chunk } = auth;
+      const { team_id, org_id, chunk } = auth;
 
-      req.auth = { team_id };
+      req.auth = { team_id, org_id };
       req.acuc = chunk ?? undefined;
       if (chunk) {
         req.account = {

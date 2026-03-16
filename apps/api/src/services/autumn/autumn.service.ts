@@ -51,7 +51,11 @@ export function isAutumnEnabled(orgId?: string): boolean {
 }
 
 export function isAutumnCheckEnabled(orgId?: string): boolean {
-  return config.AUTUMN_CHECK_ENABLED === "true" && isAutumnEnabled(orgId);
+  if (config.AUTUMN_CHECK_ENABLED !== "true") return false;
+  if (config.AUTUMN_EXPERIMENT !== "true") return false;
+  const percent = config.AUTUMN_CHECK_EXPERIMENT_PERCENT ?? 100;
+  if (!orgId || percent >= 100) return true;
+  return orgBucket(orgId) < percent;
 }
 
 export function isAutumnRequestTrackEnabled(orgId?: string): boolean {
