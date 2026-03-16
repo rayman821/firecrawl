@@ -303,6 +303,23 @@ export async function scrapeURLWithIndex(
     }
   }
 
+  // Don't serve a cached proxy-error response when the stealthProxy flag
+  // is set — the flag was likely added by AddFeatureError to retry with a
+  // stealth proxy, so returning the same error from cache would be useless.
+  // Respect minAge's cache-only contract: throw NoCachedDataError instead of
+  // waterfalling to live engines.
+  if (
+    selectedRow !== null &&
+    selectedRow !== undefined &&
+    [401, 403, 429].includes(selectedRow.status) &&
+    meta.featureFlags.has("stealthProxy")
+  ) {
+    if (meta.options.minAge !== undefined) {
+      throw new NoCachedDataError();
+    }
+    throw new IndexMissError();
+  }
+
   if (selectedRow === null || selectedRow === undefined) {
     meta.logger.debug("Index metrics", {
       module: "index/metrics",
