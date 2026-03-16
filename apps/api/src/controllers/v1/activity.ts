@@ -48,14 +48,6 @@ export async function activityController(
     teamId: req.auth.team_id,
   });
 
-  if (req.acuc?.flags?.forceZDR) {
-    return res.status(403).json({
-      success: false,
-      error:
-        "Your team has zero data retention enabled. Activity listing is not available.",
-    });
-  }
-
   // Parse and validate query params
   const kind = req.query.kind as string | undefined;
   if (kind && !VALID_KINDS.includes(kind as ActivityKind)) {
@@ -71,7 +63,7 @@ export async function activityController(
   }
   limit = Math.min(limit, MAX_LIMIT);
 
-  const cursor = req.query.next_cursor as string | undefined;
+  const cursor = req.query.cursor as string | undefined;
 
   // Build query
   const windowStart = new Date(

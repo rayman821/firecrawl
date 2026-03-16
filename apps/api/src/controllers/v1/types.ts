@@ -1259,6 +1259,7 @@ export type AuthCreditUsageChunk = {
     scrapeAgentPreview?: number;
     browser?: number;
     browserExecute?: number;
+    account?: number;
   };
   concurrency: number;
   flags: TeamFlags;

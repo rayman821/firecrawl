@@ -284,37 +284,37 @@ v1Router.delete(
 
 v1Router.get(
   "/team/credit-usage",
-  authMiddleware(RateLimiterMode.CrawlStatus),
+  authMiddleware(RateLimiterMode.Account),
   wrap(creditUsageController),
 );
 
 v1Router.get(
   "/team/credit-usage/historical",
-  authMiddleware(RateLimiterMode.CrawlStatus),
+  authMiddleware(RateLimiterMode.Account),
   wrap(creditUsageHistoricalController),
 );
 
 v1Router.get(
   "/team/token-usage",
-  authMiddleware(RateLimiterMode.ExtractStatus),
+  authMiddleware(RateLimiterMode.Account),
   wrap(tokenUsageController),
 );
 
 v1Router.get(
   "/team/token-usage/historical",
-  authMiddleware(RateLimiterMode.ExtractStatus),
+  authMiddleware(RateLimiterMode.Account),
   wrap(tokenUsageHistoricalController),
 );
 
 v1Router.get(
   "/team/queue-status",
-  authMiddleware(RateLimiterMode.CrawlStatus),
+  authMiddleware(RateLimiterMode.Account),
   wrap(queueStatusController),
 );
 
 v1Router.get(
   "/activity",
-  authMiddleware(RateLimiterMode.CrawlStatus),
+  authMiddleware(RateLimiterMode.Account),
   wrap(activityController),
 );
 
