@@ -75,21 +75,16 @@ type CheckTeamCreditsResponse = {
   chunk?: AuthCreditUsageChunk;
 };
 
-type CheckTeamCreditsOptions = {
-  runSideEffects?: boolean;
-};
-
 export async function checkTeamCredits(
   chunk: AuthCreditUsageChunk | null,
   team_id: string,
   credits: number,
-  options: CheckTeamCreditsOptions = {},
 ): Promise<CheckTeamCreditsResponse> {
   return withAuth(supaCheckTeamCredits, {
     success: true,
     message: "No DB, bypassed",
     remainingCredits: Infinity,
-  })(chunk, team_id, credits, options);
+  })(chunk, team_id, credits);
 }
 
 function evaluateTeamCredits(
@@ -124,7 +119,6 @@ async function supaCheckTeamCredits(
   chunk: AuthCreditUsageChunk | null,
   team_id: string,
   credits: number,
-  options: CheckTeamCreditsOptions = {},
 ): Promise<CheckTeamCreditsResponse> {
   // WARNING: chunk will be null if team_id is preview -- do not perform operations on it under ANY circumstances - mogery
   if (team_id === "preview" || team_id.startsWith("preview_")) {
@@ -147,7 +141,6 @@ async function supaCheckTeamCredits(
     };
   }
 
-  const runSideEffects = options.runSideEffects ?? true;
   let isAutoRechargeEnabled = false,
     autoRechargeThreshold = 1000;
   const cacheKey = `team_auto_recharge_${team_id}`;
@@ -180,7 +173,6 @@ async function supaCheckTeamCredits(
   } = evaluateTeamCredits(chunk, credits, isAutoRechargeEnabled);
 
   if (
-    runSideEffects &&
     isAutoRechargeEnabled &&
     chunk.remaining_credits < autoRechargeThreshold &&
     !chunk.is_extract
@@ -214,10 +206,7 @@ async function supaCheckTeamCredits(
   }
 
   // Only notify if their actual credits (not what they will use) used is greater than the total price credits
-  if (
-    runSideEffects &&
-    chunk.adjusted_credits_used > (chunk.total_credits_sum ?? 100000000)
-  ) {
+  if (chunk.adjusted_credits_used > (chunk.total_credits_sum ?? 100000000)) {
     sendNotification(
       team_id,
       NotificationType.LIMIT_REACHED,
@@ -225,11 +214,7 @@ async function supaCheckTeamCredits(
       chunk.sub_current_period_end,
       chunk,
     );
-  } else if (
-    runSideEffects &&
-    creditUsagePercentage >= 0.8 &&
-    creditUsagePercentage < 1
-  ) {
+  } else if (creditUsagePercentage >= 0.8 && creditUsagePercentage < 1) {
     // Send email notification for approaching credit limit
     sendNotification(
       team_id,

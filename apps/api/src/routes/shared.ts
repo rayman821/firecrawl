@@ -10,7 +10,9 @@ import { RateLimiterMode } from "../types";
 import { authenticateUser } from "../controllers/auth";
 import { createIdempotencyKey } from "../services/idempotency/create";
 import { validateIdempotencyKey } from "../services/idempotency/validate";
-import { checkTeamCredits } from "../services/billing/credit_billing";
+import {
+  checkTeamCredits,
+} from "../services/billing/credit_billing";
 import { isUrlBlocked } from "../scraper/WebScraper/utils/blocklist";
 import { logger } from "../lib/logger";
 import {
@@ -128,7 +130,6 @@ export function checkCreditsMiddleware(
         req.acuc ?? null,
         req.auth.team_id,
         requestedCredits,
-        { runSideEffects: !useAutumnCheck },
       );
       let { success, remainingCredits, chunk } = legacyCheck;
 
@@ -143,9 +144,7 @@ export function checkCreditsMiddleware(
           properties: autumnProperties,
         });
 
-        if (autumnAllowed === null) {
-          ({ success, remainingCredits, chunk } = legacyCheck);
-        } else {
+        if (autumnAllowed !== null) {
           if (autumnAllowed !== legacyCheck.success) {
             logger.warn("Autumn check result diverged from legacy credit gate", {
               teamId: req.auth.team_id,
