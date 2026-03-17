@@ -79,8 +79,8 @@ export function runSelfHostedOCRExperiment(
         wordSimilarity: Math.round(similarity * 1000) / 1000,
         failedPages: resp.failed_pages,
       });
-    } catch (_) {
-      // Only comparing successful requests
+    } catch {
+      // Non-blocking: instance may be down at any time, silently skip
     }
   })();
 }
