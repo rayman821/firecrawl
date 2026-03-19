@@ -188,6 +188,10 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: apps/test-site
 
+      - name: Install test suite dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: apps/test-suite
+
       - name: Build + serve test site
         run: |
           pnpm build
