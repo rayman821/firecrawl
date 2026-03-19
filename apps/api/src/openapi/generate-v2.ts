@@ -284,6 +284,217 @@ async function main() {
     }),
   ]);
 
+  // CrawlParamsPreviewRequest
+  const CrawlParamsPreviewRequestSchema = z.object({
+    url: z.string(),
+    prompt: z.string(),
+  });
+
+  // CrawlParamsPreviewResponse
+  const CrawlParamsPreviewResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      data: z
+        .object({
+          url: z.string(),
+          includePaths: z.array(z.string()).optional(),
+          excludePaths: z.array(z.string()).optional(),
+          maxDepth: z.number().optional(),
+          maxDiscoveryDepth: z.number().optional(),
+          crawlEntireDomain: z.boolean().optional(),
+          allowExternalLinks: z.boolean().optional(),
+          allowSubdomains: z.boolean().optional(),
+          sitemap: z.enum(["skip", "include", "only"]).optional(),
+          ignoreQueryParameters: z.boolean().optional(),
+          deduplicateSimilarURLs: z.boolean().optional(),
+          delay: z.number().optional(),
+          limit: z.number().optional(),
+        })
+        .optional(),
+    }),
+  ]);
+
+  // CreditUsageResponse
+  const CreditUsageResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      data: z.object({
+        remainingCredits: z.number(),
+        planCredits: z.number(),
+        billingPeriodStart: z.string().nullable(),
+        billingPeriodEnd: z.string().nullable(),
+      }),
+    }),
+  ]);
+
+  // CreditUsageHistoricalResponse
+  const CreditUsageHistoricalResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      periods: z.array(
+        z.object({
+          startDate: z.string().nullable(),
+          endDate: z.string().nullable(),
+          apiKey: z.string().optional(),
+          creditsUsed: z.number(),
+        }),
+      ),
+    }),
+  ]);
+
+  // TokenUsageResponse
+  const TokenUsageResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      data: z.object({
+        remainingTokens: z.number(),
+        planTokens: z.number(),
+        billingPeriodStart: z.string().nullable(),
+        billingPeriodEnd: z.string().nullable(),
+      }),
+    }),
+  ]);
+
+  // TokenUsageHistoricalResponse
+  const TokenUsageHistoricalResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      periods: z.array(
+        z.object({
+          startDate: z.string().nullable(),
+          endDate: z.string().nullable(),
+          apiKey: z.string().optional(),
+          tokensUsed: z.number(),
+        }),
+      ),
+    }),
+  ]);
+
+  // QueueStatusResponse
+  const QueueStatusResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      jobsInQueue: z.number(),
+      activeJobsInQueue: z.number(),
+      waitingJobsInQueue: z.number(),
+      maxConcurrency: z.number(),
+      mostRecentSuccess: z.string().nullable(),
+    }),
+  ]);
+
+  // ConcurrencyCheckResponse
+  const ConcurrencyCheckResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      concurrency: z.number(),
+      maxConcurrency: z.number(),
+    }),
+  ]);
+
+  // BrowserCreateRequest
+  const BrowserCreateRequestSchema = z.object({
+    ttl: z.number().optional(),
+    activityTtl: z.number().optional(),
+    streamWebView: z.boolean().optional(),
+    profile: z
+      .object({
+        name: z.string(),
+        saveChanges: z.boolean().optional(),
+      })
+      .optional(),
+  });
+
+  // BrowserCreateResponse
+  const BrowserCreateResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      id: z.string(),
+      cdpUrl: z.string(),
+      liveViewUrl: z.string(),
+      interactiveLiveViewUrl: z.string(),
+      expiresAt: z.string(),
+    }),
+  ]);
+
+  // BrowserExecuteRequest
+  const BrowserExecuteRequestSchema = z.object({
+    code: z.string(),
+    language: z.enum(["python", "node", "bash"]).optional(),
+    timeout: z.number().optional(),
+  });
+
+  // BrowserExecuteResponse
+  const BrowserExecuteResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      stdout: z.string().optional(),
+      result: z.string().optional(),
+      stderr: z.string().optional(),
+      exitCode: z.number().optional(),
+      killed: z.boolean().optional(),
+      error: z.string().optional(),
+    }),
+  ]);
+
+  // BrowserDeleteResponse
+  const BrowserDeleteResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      sessionDurationMs: z.number().optional(),
+      creditsBilled: z.number().optional(),
+    }),
+  ]);
+
+  // BrowserListResponse
+  const BrowserListResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      sessions: z
+        .array(
+          z.object({
+            id: z.string(),
+            status: z.string(),
+            cdpUrl: z.string(),
+            liveViewUrl: z.string(),
+            interactiveLiveViewUrl: z.string(),
+            streamWebView: z.boolean(),
+            createdAt: z.string(),
+            lastActivity: z.string(),
+          }),
+        )
+        .optional(),
+    }),
+  ]);
+
+  // X402SearchResponse (uses same shape as SearchResponse plus scrapeIds)
+  const X402SearchResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      data: z.any(),
+      scrapeIds: z
+        .object({
+          web: z.array(z.string()).optional(),
+          news: z.array(z.string()).optional(),
+          images: z.array(z.string()).optional(),
+        })
+        .optional(),
+      creditsUsed: z.number(),
+      id: z.string(),
+    }),
+  ]);
+
   const schemas: Record<string, any> = {
     // Requests (strip internal __ prefixed properties)
     ScrapeRequest: stripInternalProps(
@@ -357,6 +568,56 @@ async function main() {
     MapResponse: zodToJsonSchema(MapResponseSchema, "output"),
     SearchResponse: zodToJsonSchema(SearchResponseSchema, "output"),
     ExtractResponse: zodToJsonSchema(ExtractResponseSchema, "output"),
+
+    // Crawl params preview
+    CrawlParamsPreviewRequest: zodToJsonSchema(
+      CrawlParamsPreviewRequestSchema,
+      "input",
+    ),
+    CrawlParamsPreviewResponse: zodToJsonSchema(
+      CrawlParamsPreviewResponseSchema,
+      "output",
+    ),
+
+    // Team analytics
+    CreditUsageResponse: zodToJsonSchema(CreditUsageResponseSchema, "output"),
+    CreditUsageHistoricalResponse: zodToJsonSchema(
+      CreditUsageHistoricalResponseSchema,
+      "output",
+    ),
+    TokenUsageResponse: zodToJsonSchema(TokenUsageResponseSchema, "output"),
+    TokenUsageHistoricalResponse: zodToJsonSchema(
+      TokenUsageHistoricalResponseSchema,
+      "output",
+    ),
+    QueueStatusResponse: zodToJsonSchema(QueueStatusResponseSchema, "output"),
+    ConcurrencyCheckResponse: zodToJsonSchema(
+      ConcurrencyCheckResponseSchema,
+      "output",
+    ),
+
+    // Browser API
+    BrowserCreateRequest: zodToJsonSchema(BrowserCreateRequestSchema, "input"),
+    BrowserCreateResponse: zodToJsonSchema(
+      BrowserCreateResponseSchema,
+      "output",
+    ),
+    BrowserExecuteRequest: zodToJsonSchema(
+      BrowserExecuteRequestSchema,
+      "input",
+    ),
+    BrowserExecuteResponse: zodToJsonSchema(
+      BrowserExecuteResponseSchema,
+      "output",
+    ),
+    BrowserDeleteResponse: zodToJsonSchema(
+      BrowserDeleteResponseSchema,
+      "output",
+    ),
+    BrowserListResponse: zodToJsonSchema(BrowserListResponseSchema, "output"),
+
+    // X402 Search
+    X402SearchResponse: zodToJsonSchema(X402SearchResponseSchema, "output"),
   };
 
   const doc: OpenAPIV3_1 = {
@@ -727,6 +988,279 @@ async function main() {
               content: {
                 "application/json": {
                   schema: schemaRef("AgentCancelResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/crawl/params-preview": {
+        post: {
+          tags: ["Crawling"],
+          operationId: "Crawl Params Preview",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: schemaRef("CrawlParamsPreviewRequest"),
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("CrawlParamsPreviewResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/team/credit-usage": {
+        get: {
+          tags: ["Team"],
+          operationId: "Credit Usage",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("CreditUsageResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/team/credit-usage/historical": {
+        get: {
+          tags: ["Team"],
+          operationId: "Credit Usage Historical",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "byApiKey",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["true", "false"] },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("CreditUsageHistoricalResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/team/token-usage": {
+        get: {
+          tags: ["Team"],
+          operationId: "Token Usage",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("TokenUsageResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/team/token-usage/historical": {
+        get: {
+          tags: ["Team"],
+          operationId: "Token Usage Historical",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "byApiKey",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["true", "false"] },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("TokenUsageHistoricalResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/team/queue-status": {
+        get: {
+          tags: ["Team"],
+          operationId: "Queue Status",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("QueueStatusResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/concurrency-check": {
+        get: {
+          tags: ["Team"],
+          operationId: "Concurrency Check",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("ConcurrencyCheckResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/browser": {
+        post: {
+          tags: ["Browser"],
+          operationId: "Browser Create",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: schemaRef("BrowserCreateRequest"),
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("BrowserCreateResponse"),
+                },
+              },
+            },
+          },
+        },
+        get: {
+          tags: ["Browser"],
+          operationId: "Browser List",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "status",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["active", "destroyed"] },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("BrowserListResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/browser/{sessionId}/execute": {
+        post: {
+          tags: ["Browser"],
+          operationId: "Browser Execute",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "sessionId",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: schemaRef("BrowserExecuteRequest"),
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("BrowserExecuteResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/browser/{sessionId}": {
+        delete: {
+          tags: ["Browser"],
+          operationId: "Browser Delete",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "sessionId",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("BrowserDeleteResponse"),
+                },
+              },
+            },
+          },
+        },
+      },
+      "/x402/search": {
+        post: {
+          tags: ["Search"],
+          operationId: "X402 Search",
+          description: "Search endpoint with micropayment via X402 protocol.",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": { schema: schemaRef("SearchRequest") },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Successful response",
+              content: {
+                "application/json": {
+                  schema: schemaRef("X402SearchResponse"),
                 },
               },
             },

@@ -4143,6 +4143,812 @@
             "additionalProperties": false
           }
         ]
+      },
+      "CrawlParamsPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        },
+        "required": ["url", "prompt"]
+      },
+      "CrawlParamsPreviewResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "includePaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "excludePaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "maxDepth": {
+                    "type": "number"
+                  },
+                  "maxDiscoveryDepth": {
+                    "type": "number"
+                  },
+                  "crawlEntireDomain": {
+                    "type": "boolean"
+                  },
+                  "allowExternalLinks": {
+                    "type": "boolean"
+                  },
+                  "allowSubdomains": {
+                    "type": "boolean"
+                  },
+                  "sitemap": {
+                    "type": "string",
+                    "enum": ["skip", "include", "only"]
+                  },
+                  "ignoreQueryParameters": {
+                    "type": "boolean"
+                  },
+                  "deduplicateSimilarURLs": {
+                    "type": "boolean"
+                  },
+                  "delay": {
+                    "type": "number"
+                  },
+                  "limit": {
+                    "type": "number"
+                  }
+                },
+                "required": ["url"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["success"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CreditUsageResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "remainingCredits": {
+                    "type": "number"
+                  },
+                  "planCredits": {
+                    "type": "number"
+                  },
+                  "billingPeriodStart": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "billingPeriodEnd": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "remainingCredits",
+                  "planCredits",
+                  "billingPeriodStart",
+                  "billingPeriodEnd"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": ["success", "data"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CreditUsageHistoricalResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "periods": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "startDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "endDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "apiKey": {
+                      "type": "string"
+                    },
+                    "creditsUsed": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["startDate", "endDate", "creditsUsed"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["success", "periods"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "TokenUsageResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "remainingTokens": {
+                    "type": "number"
+                  },
+                  "planTokens": {
+                    "type": "number"
+                  },
+                  "billingPeriodStart": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "billingPeriodEnd": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "remainingTokens",
+                  "planTokens",
+                  "billingPeriodStart",
+                  "billingPeriodEnd"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": ["success", "data"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "TokenUsageHistoricalResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "periods": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "startDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "endDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "apiKey": {
+                      "type": "string"
+                    },
+                    "tokensUsed": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["startDate", "endDate", "tokensUsed"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["success", "periods"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "QueueStatusResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "jobsInQueue": {
+                "type": "number"
+              },
+              "activeJobsInQueue": {
+                "type": "number"
+              },
+              "waitingJobsInQueue": {
+                "type": "number"
+              },
+              "maxConcurrency": {
+                "type": "number"
+              },
+              "mostRecentSuccess": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "success",
+              "jobsInQueue",
+              "activeJobsInQueue",
+              "waitingJobsInQueue",
+              "maxConcurrency",
+              "mostRecentSuccess"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ConcurrencyCheckResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "concurrency": {
+                "type": "number"
+              },
+              "maxConcurrency": {
+                "type": "number"
+              }
+            },
+            "required": ["success", "concurrency", "maxConcurrency"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "BrowserCreateRequest": {
+        "type": "object",
+        "properties": {
+          "ttl": {
+            "type": "number"
+          },
+          "activityTtl": {
+            "type": "number"
+          },
+          "streamWebView": {
+            "type": "boolean"
+          },
+          "profile": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "saveChanges": {
+                "type": "boolean"
+              }
+            },
+            "required": ["name"]
+          }
+        }
+      },
+      "BrowserCreateResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "id": {
+                "type": "string"
+              },
+              "cdpUrl": {
+                "type": "string"
+              },
+              "liveViewUrl": {
+                "type": "string"
+              },
+              "interactiveLiveViewUrl": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "success",
+              "id",
+              "cdpUrl",
+              "liveViewUrl",
+              "interactiveLiveViewUrl",
+              "expiresAt"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "BrowserExecuteRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string",
+            "enum": ["python", "node", "bash"]
+          },
+          "timeout": {
+            "type": "number"
+          }
+        },
+        "required": ["code"]
+      },
+      "BrowserExecuteResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "stdout": {
+                "type": "string"
+              },
+              "result": {
+                "type": "string"
+              },
+              "stderr": {
+                "type": "string"
+              },
+              "exitCode": {
+                "type": "number"
+              },
+              "killed": {
+                "type": "boolean"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["success"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "BrowserDeleteResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "sessionDurationMs": {
+                "type": "number"
+              },
+              "creditsBilled": {
+                "type": "number"
+              }
+            },
+            "required": ["success"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "BrowserListResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "sessions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "cdpUrl": {
+                      "type": "string"
+                    },
+                    "liveViewUrl": {
+                      "type": "string"
+                    },
+                    "interactiveLiveViewUrl": {
+                      "type": "string"
+                    },
+                    "streamWebView": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "lastActivity": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "status",
+                    "cdpUrl",
+                    "liveViewUrl",
+                    "interactiveLiveViewUrl",
+                    "streamWebView",
+                    "createdAt",
+                    "lastActivity"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["success"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "X402SearchResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "data": {},
+              "scrapeIds": {
+                "type": "object",
+                "properties": {
+                  "web": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "news": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "creditsUsed": {
+                "type": "number"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["success", "data", "creditsUsed", "id"],
+            "additionalProperties": false
+          }
+        ]
       }
     }
   },
@@ -4761,6 +5567,374 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentCancelResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crawl/params-preview": {
+      "post": {
+        "tags": ["Crawling"],
+        "operationId": "Crawl Params Preview",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlParamsPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlParamsPreviewResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/team/credit-usage": {
+      "get": {
+        "tags": ["Team"],
+        "operationId": "Credit Usage",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditUsageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/team/credit-usage/historical": {
+      "get": {
+        "tags": ["Team"],
+        "operationId": "Credit Usage Historical",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "byApiKey",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditUsageHistoricalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/team/token-usage": {
+      "get": {
+        "tags": ["Team"],
+        "operationId": "Token Usage",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenUsageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/team/token-usage/historical": {
+      "get": {
+        "tags": ["Team"],
+        "operationId": "Token Usage Historical",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "byApiKey",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenUsageHistoricalResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/team/queue-status": {
+      "get": {
+        "tags": ["Team"],
+        "operationId": "Queue Status",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/concurrency-check": {
+      "get": {
+        "tags": ["Team"],
+        "operationId": "Concurrency Check",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConcurrencyCheckResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser": {
+      "post": {
+        "tags": ["Browser"],
+        "operationId": "Browser Create",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserCreateResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Browser"],
+        "operationId": "Browser List",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["active", "destroyed"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser/{sessionId}/execute": {
+      "post": {
+        "tags": ["Browser"],
+        "operationId": "Browser Execute",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserExecuteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserExecuteResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser/{sessionId}": {
+      "delete": {
+        "tags": ["Browser"],
+        "operationId": "Browser Delete",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserDeleteResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/x402/search": {
+      "post": {
+        "tags": ["Search"],
+        "operationId": "X402 Search",
+        "description": "Search endpoint with micropayment via X402 protocol.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/X402SearchResponse"
                 }
               }
             }
