@@ -55,6 +55,10 @@ import {
   agentSignupConfirmController,
   agentSignupBlockController,
 } from "../controllers/v2/agent-signup-confirm";
+import {
+  scrapeBrowserDeleteController,
+  scrapeExecuteController,
+} from "../controllers/v2/scrape-browser";
 
 expressWs(express());
 
@@ -201,6 +205,20 @@ v2Router.get(
   authMiddleware(RateLimiterMode.CrawlStatus),
   validateJobIdParam,
   wrap(scrapeStatusController),
+);
+
+v2Router.post(
+  "/scrape/:jobId/execute",
+  authMiddleware(RateLimiterMode.BrowserExecute),
+  validateJobIdParam,
+  wrap(scrapeExecuteController),
+);
+
+v2Router.delete(
+  "/scrape/:jobId/browser",
+  authMiddleware(RateLimiterMode.BrowserExecute),
+  validateJobIdParam,
+  wrap(scrapeBrowserDeleteController),
 );
 
 v2Router.post(

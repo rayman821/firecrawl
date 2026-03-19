@@ -104,6 +104,33 @@ export async function scrapeStatus(
   return raw.body.data;
 }
 
+export async function scrapeExecuteRaw(
+  jobId: string,
+  body: {
+    code: string;
+    language?: "python" | "node" | "bash";
+    timeout?: number;
+    origin?: string;
+  },
+  identity: Identity,
+) {
+  return await request(TEST_API_URL)
+    .post("/v2/scrape/" + encodeURIComponent(jobId) + "/execute")
+    .set("Authorization", `Bearer ${identity.apiKey}`)
+    .set("Content-Type", "application/json")
+    .send(body);
+}
+
+export async function scrapeBrowserDeleteRaw(
+  jobId: string,
+  identity: Identity,
+) {
+  return await request(TEST_API_URL)
+    .delete("/v2/scrape/" + encodeURIComponent(jobId) + "/browser")
+    .set("Authorization", `Bearer ${identity.apiKey}`)
+    .send();
+}
+
 // =========================================
 // Crawl API
 // =========================================
