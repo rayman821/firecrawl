@@ -26,9 +26,15 @@ import {
   lockURLsIndividually,
   normalizeURL,
   saveCrawl,
+  setCrawlError,
   StoredCrawl,
 } from "../../lib/crawl-redis";
 import { redisEvictConnection } from "../redis";
+import {
+  resolveBillingMetadata,
+  toAutumnBillingProperties,
+} from "../billing/types";
+import { autumnService } from "../autumn/autumn.service";
 import {
   _addScrapeJobToBullMQ,
   addScrapeJob,
@@ -45,7 +51,7 @@ import { startWebScraperPipeline } from "../../main/runWebScraper";
 import { CostTracking } from "../../lib/cost-tracking";
 import { normalizeUrlOnlyHostname } from "../../lib/canonical-url";
 import { isUrlBlocked } from "../../scraper/WebScraper/utils/blocklist";
-import { BLOCKLISTED_URL_MESSAGE } from "../../lib/strings";
+import { UNSUPPORTED_SITE_MESSAGE } from "../../lib/strings";
 import { generateURLSplits, queryIndexAtSplitLevel } from "../index";
 import { WebCrawler } from "../../scraper/WebScraper/crawler";
 import { calculateCreditsToBeBilled } from "../../lib/scrape-billing";
@@ -53,6 +59,7 @@ import { getBillingQueue } from "../queue-service";
 import type { Logger } from "winston";
 import {
   CrawlDenialError,
+  JobCancelledError,
   RacedRedirectError,
   ScrapeJobTimeoutError,
   TransportableError,
@@ -96,6 +103,17 @@ async function billScrapeJob(
   unsupportedFeatures?: Set<FeatureFlag>,
 ) {
   let creditsToBeBilled: number | null = null;
+  const billing = resolveBillingMetadata({
+    billing: job.data.billing,
+    crawlId: job.data.crawl_id,
+    crawlerOptions: job.data.crawlerOptions,
+  });
+  const autumnProperties = {
+    source: "billScrapeJob",
+    ...toAutumnBillingProperties(billing),
+    apiKeyId: job.data.apiKeyId,
+  };
+  let trackedInRequest = false;
 
   if (job.data.is_scrape !== true && !job.data.internalOptions?.bypassBilling) {
     creditsToBeBilled = await calculateCreditsToBeBilled(
@@ -113,11 +131,18 @@ async function billScrapeJob(
       config.USE_DB_AUTHENTICATION
     ) {
       try {
+        trackedInRequest = await autumnService.trackCredits({
+          teamId: job.data.team_id,
+          value: creditsToBeBilled,
+          properties: autumnProperties,
+          requestScoped: true,
+        });
         const billingJobId = uuidv7();
         logger.debug(
           `Adding billing job to queue for team ${job.data.team_id}`,
           {
             billingJobId,
+            billing,
             credits: creditsToBeBilled,
             is_extract: false,
           },
@@ -130,22 +155,32 @@ async function billScrapeJob(
             team_id: job.data.team_id,
             subscription_id: undefined,
             credits: creditsToBeBilled,
+            billing,
             is_extract: false,
             timestamp: new Date().toISOString(),
             originating_job_id: job.id,
             api_key_id: job.data.apiKeyId,
+            autumnTrackInRequest: trackedInRequest,
           },
           {
             jobId: billingJobId,
             priority: 10,
           },
         );
+
         return creditsToBeBilled;
       } catch (error) {
         logger.error(
           `Failed to add billing job to queue for team ${job.data.team_id} for ${creditsToBeBilled} credits`,
           { error },
         );
+        if (trackedInRequest && creditsToBeBilled !== null) {
+          await autumnService.refundCredits({
+            teamId: job.data.team_id,
+            value: creditsToBeBilled,
+            properties: autumnProperties,
+          });
+        }
         captureExceptionWithZdrCheck(error, {
           extra: { zeroDataRetention: job.data.zeroDataRetention ?? false },
         });
@@ -180,10 +215,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
   const abortTimeoutHandle =
     remainingTime !== undefined
       ? setTimeout(
-          () =>
-            abortController.abort(
-              new ScrapeJobTimeoutError("Scrape timed out"),
-            ),
+          () => abortController.abort(new ScrapeJobTimeoutError()),
           remainingTime,
         )
       : undefined;
@@ -191,13 +223,13 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
 
   try {
     if (remainingTime !== undefined && remainingTime < 0) {
-      throw new ScrapeJobTimeoutError("Scrape timed out");
+      throw new ScrapeJobTimeoutError();
     }
 
     if (job.data.crawl_id) {
       const sc = (await getCrawl(job.data.crawl_id)) as StoredCrawl;
       if (sc && sc.cancelled) {
-        throw new Error("Parent crawl/batch scrape was cancelled");
+        throw new JobCancelledError();
       }
     }
 
@@ -216,7 +248,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
                   timeoutHandle = setTimeout(resolve, remainingTime);
                 });
 
-                throw new ScrapeJobTimeoutError("Scrape timed out");
+                throw new ScrapeJobTimeoutError();
               })(),
             ]
           : []),
@@ -230,7 +262,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
     try {
       signal?.throwIfAborted();
     } catch (e) {
-      throw new ScrapeJobTimeoutError("Scrape timed out");
+      throw new ScrapeJobTimeoutError();
     }
 
     if (!pipeline.success) {
@@ -297,7 +329,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
         if (!filterResult.allowed && !job.data.isCrawlSourceScrape) {
           const reason =
             filterResult.denialReason ||
-            "Redirected target URL is not allowed by crawlOptions";
+            `The URL you requested redirected to a different URL ("${doc.metadata.url}"), but that redirected URL is not allowed by your crawl configuration (includePaths, excludePaths, allowBackwardCrawling, or other filters). The original URL was "${doc.metadata.sourceURL}". To include this redirected URL, adjust your crawl options to allow it.`;
           throw new CrawlDenialError(reason);
         }
 
@@ -321,7 +353,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
             (await getACUCTeam(job.data.team_id))?.flags ?? null,
           )
         ) {
-          throw new CrawlDenialError(BLOCKLISTED_URL_MESSAGE); // TODO: make this its own error type that is ignored by error tracking
+          throw new CrawlDenialError(UNSUPPORTED_SITE_MESSAGE); // TODO: make this its own error type that is ignored by error tracking
         }
 
         const p1 = generateURLPermutations(normalizeURL(doc.metadata.url, sc));
@@ -355,78 +387,82 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
             doc.metadata.url ?? doc.metadata.sourceURL ?? sc.originUrl!,
           );
 
-          const links = await crawler.filterLinks(
-            await crawler.extractLinksFromHTML(
-              rawHtml ?? "",
-              doc.metadata?.url ?? doc.metadata?.sourceURL ?? sc.originUrl!,
-            ),
-            Infinity,
-            sc.crawlerOptions?.maxDepth ?? 10,
-          );
-          logger.debug("Discovered " + links.links.length + " links...", {
-            linksLength: links.links.length,
-          });
+          if (!sc.crawlerOptions?.sitemapOnly) {
+            const links = await crawler.filterLinks(
+              await crawler.extractLinksFromHTML(
+                rawHtml ?? "",
+                doc.metadata?.url ?? doc.metadata?.sourceURL ?? sc.originUrl!,
+              ),
+              Infinity,
+              sc.crawlerOptions?.maxDepth ?? 10,
+            );
+            logger.debug("Discovered " + links.links.length + " links...", {
+              linksLength: links.links.length,
+            });
 
-          // Store robots blocked URLs in Redis set
-          for (const [url, reason] of links.denialReasons) {
-            if (reason === "URL blocked by robots.txt") {
-              await recordRobotsBlocked(job.data.crawl_id, url);
+            // Store robots blocked URLs in Redis set
+            for (const [url, reason] of links.denialReasons) {
+              if (reason === "URL blocked by robots.txt") {
+                await recordRobotsBlocked(job.data.crawl_id, url);
+              }
             }
-          }
 
-          for (const link of links.links) {
-            if (await lockURL(job.data.crawl_id, sc, link)) {
-              // This seems to work really welel
-              const jobPriority = await getJobPriority({
-                team_id: sc.team_id,
-                basePriority: job.data.crawl_id ? 20 : 10,
-              });
-              const jobId = uuidv7();
-
-              logger.debug(
-                "Determined job priority " +
-                  jobPriority +
-                  " for URL " +
-                  JSON.stringify(link),
-                { jobPriority, url: link },
-              );
-
-              await addScrapeJob(
-                {
-                  url: link,
-                  mode: "single_urls",
+            for (const link of links.links) {
+              if (await lockURL(job.data.crawl_id, sc, link)) {
+                // This seems to work really welel
+                const jobPriority = await getJobPriority({
                   team_id: sc.team_id,
-                  scrapeOptions: scrapeOptions.parse(sc.scrapeOptions),
-                  internalOptions: sc.internalOptions,
-                  crawlerOptions: {
-                    ...sc.crawlerOptions,
-                    currentDiscoveryDepth:
-                      (job.data.crawlerOptions?.currentDiscoveryDepth ?? 0) + 1,
-                  },
-                  origin: job.data.origin,
-                  integration: job.data.integration,
-                  crawl_id: job.data.crawl_id,
-                  requestId: job.data.requestId,
-                  webhook: job.data.webhook,
-                  v1: job.data.v1,
-                  zeroDataRetention: job.data.zeroDataRetention,
-                  apiKeyId: job.data.apiKeyId,
-                },
-                jobId,
-                jobPriority,
-              );
+                  basePriority: job.data.crawl_id ? 20 : 10,
+                });
+                const jobId = uuidv7();
 
-              await addCrawlJob(job.data.crawl_id, jobId, logger);
-              logger.debug("Added job for URL " + JSON.stringify(link), {
-                jobPriority,
-                url: link,
-                newJobId: jobId,
-              });
-            } else {
-              // TODO: removed this, ok? too many 'not useful' logs (?) Mogery!
-              // logger.debug("Could not lock URL " + JSON.stringify(link), {
-              //   url: link,
-              // });
+                logger.debug(
+                  "Determined job priority " +
+                    jobPriority +
+                    " for URL " +
+                    JSON.stringify(link),
+                  { jobPriority, url: link },
+                );
+
+                await addScrapeJob(
+                  {
+                    url: link,
+                    mode: "single_urls",
+                    team_id: sc.team_id,
+                    scrapeOptions: scrapeOptions.parse(sc.scrapeOptions),
+                    internalOptions: sc.internalOptions,
+                    crawlerOptions: {
+                      ...sc.crawlerOptions,
+                      currentDiscoveryDepth:
+                        (job.data.crawlerOptions?.currentDiscoveryDepth ?? 0) +
+                        1,
+                    },
+                    origin: job.data.origin,
+                    integration: job.data.integration,
+                    crawl_id: job.data.crawl_id,
+                    requestId: job.data.requestId,
+                    billing: job.data.billing,
+                    webhook: job.data.webhook,
+                    v1: job.data.v1,
+                    zeroDataRetention: job.data.zeroDataRetention,
+                    apiKeyId: job.data.apiKeyId,
+                  },
+                  jobId,
+                  jobPriority,
+                );
+
+                await addCrawlJob(job.data.crawl_id, jobId, logger);
+                logger.debug("Added job for URL " + JSON.stringify(link), {
+                  jobPriority,
+                  url: link,
+                  newJobId: jobId,
+                });
+              } else {
+                // TODO: removed this, ok? too many 'not useful' logs (?) Mogery!
+                // logger.debug("Could not lock URL " + JSON.stringify(link), {
+                //   url: link,
+                // });
+              }
             }
           }
 
@@ -441,7 +477,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
               const url = doc.metadata.url ?? doc.metadata.sourceURL!;
               const reason =
                 filterResult.denialReasons.get(url) ||
-                "Source URL is not allowed by crawl configuration";
+                `The source URL ("${url}") you provided as the starting point for this crawl is not allowed by your own crawl configuration. This can happen if your includePaths, excludePaths, maxDepth, or other filters exclude the starting URL itself. Please check your crawl configuration to ensure the starting URL is allowed.`;
               throw new CrawlDenialError(reason);
             }
           }
@@ -451,7 +487,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
       try {
         signal?.throwIfAborted();
       } catch (e) {
-        throw new ScrapeJobTimeoutError("Scrape timed out");
+        throw new ScrapeJobTimeoutError();
       }
 
       const credits_billed = await billScrapeJob(
@@ -522,7 +558,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
       try {
         signal?.throwIfAborted();
       } catch (e) {
-        throw new ScrapeJobTimeoutError("Scrape timed out");
+        throw new ScrapeJobTimeoutError();
       }
 
       const credits_billed = await billScrapeJob(
@@ -537,7 +573,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
 
       doc.metadata.creditsUsed = credits_billed ?? undefined;
 
-      await logScrape(
+      const logScrapePromise = logScrape(
         {
           id: job.id,
           request_id: job.data.requestId ?? job.data.crawl_id ?? job.id,
@@ -555,6 +591,16 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
         },
         false,
       );
+
+      if (job.data.skipNuq) {
+        // doesn't use GCS for result retrieval, safe to not await
+        logScrapePromise.catch(err =>
+          logger.warn("Background scrape log failed", { error: err }),
+        );
+      } else {
+        // v0 - must await because waitForJob reads from GCS
+        await logScrapePromise;
+      }
     }
 
     logger.info(`🐂 Job done ${job.id}`);
@@ -591,9 +637,7 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
     }
 
     const isEarlyTimeout = error instanceof ScrapeJobTimeoutError;
-    const isCancelled =
-      error instanceof Error &&
-      error.message === "Parent crawl/batch scrape was cancelled";
+    const isCancelled = error instanceof JobCancelledError;
 
     if (isEarlyTimeout) {
       logger.error(`🐂 Job timed out ${job.id}`);
@@ -720,7 +764,7 @@ async function kickoffGetIndexLinks(
   crawler: WebCrawler,
   url: string,
 ) {
-  if (sc.crawlerOptions.ignoreSitemap) {
+  if (sc.crawlerOptions.ignoreSitemap || sc.crawlerOptions.sitemapOnly) {
     return [];
   }
 
@@ -787,6 +831,7 @@ async function addKickoffSitemapJob(
       integration: sourceJob.data.integration,
       crawl_id: sourceJob.data.crawl_id,
       requestId: sourceJob.data.requestId,
+      billing: sourceJob.data.billing,
       webhook: sourceJob.data.webhook,
       v1: sourceJob.data.v1,
       apiKeyId: sourceJob.data.apiKeyId,
@@ -839,6 +884,7 @@ async function processKickoffJob(job: NuQJob<ScrapeJobKickoff>) {
         integration: job.data.integration,
         crawl_id: job.data.crawl_id,
         requestId: job.data.requestId,
+        billing: job.data.billing,
         webhook: job.data.webhook,
         v1: job.data.v1,
         isCrawlSourceScrape: true,
@@ -926,6 +972,7 @@ async function processKickoffJob(job: NuQJob<ScrapeJobKickoff>) {
             integration: job.data.integration,
             crawl_id: job.data.crawl_id,
             requestId: job.data.requestId,
+            billing: job.data.billing,
             sitemapped: true,
             webhook: job.data.webhook,
             v1: job.data.v1,
@@ -963,7 +1010,12 @@ async function processKickoffJob(job: NuQJob<ScrapeJobKickoff>) {
   } catch (error) {
     logger.error("An error occurred!", { error });
     await finishCrawlKickoff(job.data.crawl_id);
-    const sc = (await getCrawl(job.data.crawl_id)) as StoredCrawl;
+    await setCrawlError(
+      job.data.crawl_id,
+      error instanceof Error
+        ? error.message
+        : "An unexpected error occurred during crawl setup",
+    );
     return { success: false, error };
   }
 }
@@ -1033,6 +1085,7 @@ async function processKickoffSitemapJob(job: NuQJob<ScrapeJobKickoffSitemap>) {
           integration: job.data.integration,
           crawl_id: job.data.crawl_id,
           requestId: job.data.requestId,
+          billing: job.data.billing,
           sitemapped: true,
           webhook: job.data.webhook,
           v1: job.data.v1,
@@ -1198,8 +1251,15 @@ async function processJobWithTracing(job: NuQJob<ScrapeJobData>, logger: any) {
   } catch (error) {
     logger.warn("Job failed", { error });
 
-    // Filter out TransportableErrors (flow control)
-    if (!(error instanceof TransportableError)) {
+    // Filter out expected errors (flow control, not real errors)
+    if (
+      error instanceof TransportableError ||
+      error instanceof JobCancelledError ||
+      error instanceof RacedRedirectError ||
+      error instanceof ScrapeJobTimeoutError
+    ) {
+      // These are expected flow control errors, don't send to Sentry
+    } else {
       captureExceptionWithZdrCheck(error, {
         extra: { zeroDataRetention: job.data.zeroDataRetention ?? false },
       });

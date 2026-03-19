@@ -19,12 +19,13 @@ import * as Sentry from "@sentry/node";
 import { getJobPriority } from "../../lib/job-priority";
 import { ZodError } from "zod";
 import { Document as V0Document } from "./../../lib/entities";
-import { BLOCKLISTED_URL_MESSAGE } from "../../lib/strings";
+import { UNSUPPORTED_SITE_MESSAGE } from "../../lib/strings";
 import { fromV0Combo } from "../v2/types";
 import { ScrapeJobTimeoutError } from "../../lib/error";
 import { scrapeQueue } from "../../services/worker/nuq";
 import { getErrorContactMessage } from "../../lib/deployment";
 import { logRequest } from "../../services/logging/log_job";
+import { getScrapeZDR } from "../../lib/zdr-helpers";
 
 async function scrapeHelper(
   jobId: string,
@@ -64,7 +65,7 @@ async function scrapeHelper(
   if (isUrlBlocked(url, flags)) {
     return {
       success: false,
-      error: BLOCKLISTED_URL_MESSAGE,
+      error: UNSUPPORTED_SITE_MESSAGE,
       returnCode: 403,
     };
   }
@@ -91,6 +92,7 @@ async function scrapeHelper(
       internalOptions,
       origin: req.body.origin ?? defaultOrigin,
       integration: req.body.integration,
+      billing: { endpoint: "scrape", jobId },
       startTime: Date.now(),
       zeroDataRetention: false, // not supported on v0
       apiKeyId,
@@ -184,7 +186,7 @@ export async function scrapeController(req: Request, res: Response) {
 
     const { team_id, chunk } = auth;
 
-    if (chunk?.flags?.forceZDR) {
+    if (getScrapeZDR(chunk?.flags) === "forced") {
       return res.status(400).json({
         error:
           "Your team has zero data retention enabled. This is not supported on the v0 API. Please update your code to use the v1 API.",

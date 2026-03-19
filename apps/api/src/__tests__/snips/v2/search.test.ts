@@ -6,6 +6,7 @@ import {
   TEST_PRODUCTION,
 } from "../lib";
 import { search, idmux, Identity } from "./lib";
+import { config } from "../../../config";
 
 let identity: Identity;
 
@@ -40,7 +41,7 @@ describeIf(TEST_PRODUCTION || HAS_SEARCH || HAS_PROXY)("Search tests", () => {
       const res = await search(
         {
           query: "firecrawl.dev",
-          limit: 2,
+          limit: 5,
           scrapeOptions: {
             formats: ["markdown"],
           },
@@ -49,9 +50,27 @@ describeIf(TEST_PRODUCTION || HAS_SEARCH || HAS_PROXY)("Search tests", () => {
         identity,
       );
 
+      expect(res.web).toBeDefined();
+      expect(res.web?.length).toBeGreaterThan(0);
+
+      let markdownCount = 0;
+
       for (const doc of res.web ?? []) {
-        expect(doc.markdown).toBeDefined();
+        if (doc.markdown) {
+          markdownCount += 1;
+        } else {
+          // Search can return URLs that are not consistently scrapeable in test environments,
+          // so log the failing entries to make partial scrape failures easier to debug.
+          console.warn("Search scrape result missing markdown", {
+            url: doc.url,
+            error: doc.metadata?.error,
+            statusCode: doc.metadata?.statusCode,
+          });
+          expect(doc.metadata?.error).toBeDefined();
+        }
       }
+
+      expect(markdownCount).toBeGreaterThan(0);
     },
     125000,
   );
@@ -211,6 +230,41 @@ describeIf(TEST_PRODUCTION || HAS_SEARCH || HAS_PROXY)("Search tests", () => {
       );
       expect(res.web).toBeDefined();
       expect(res.web?.length).toBeGreaterThan(0);
+    },
+    60000,
+  );
+
+  // SEARXNG-specific pagination tests
+  concurrentIf(!!config.SEARXNG_ENDPOINT)(
+    "searxng respects limit of 2 results",
+    async () => {
+      const res = await search(
+        {
+          query: "firecrawl",
+          limit: 2,
+        },
+        identity,
+      );
+      expect(res.web).toBeDefined();
+      expect(res.web?.length).toBeGreaterThan(0);
+      expect(res.web?.length).toBeLessThanOrEqual(2);
+    },
+    60000,
+  );
+
+  concurrentIf(!!config.SEARXNG_ENDPOINT)(
+    "searxng fetches multiple pages for 21 results",
+    async () => {
+      const res = await search(
+        {
+          query: "firecrawl",
+          limit: 21,
+        },
+        identity,
+      );
+      expect(res.web).toBeDefined();
+      expect(res.web?.length).toBeGreaterThan(0);
+      expect(res.web?.length).toBeLessThanOrEqual(21);
     },
     60000,
   );

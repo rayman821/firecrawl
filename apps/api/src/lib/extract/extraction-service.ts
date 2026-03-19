@@ -35,7 +35,6 @@ import { analyzeSchemaAndPrompt } from "./completions/analyzeSchemaAndPrompt";
 import { batchExtractPromise } from "./completions/batchExtract";
 import { singleAnswerCompletion } from "./completions/singleAnswer";
 import { SourceTracker } from "./helpers/source-tracker";
-import { getCachedDocs, saveCachedDocs } from "./helpers/cached-docs";
 import { normalizeUrl } from "../canonical-url";
 import { search } from "../../search";
 import { buildRephraseToSerpPrompt } from "./build-prompts";
@@ -76,7 +75,7 @@ type completions = {
   sources?: string[];
 };
 
-export async function performExtraction(
+async function performExtraction(
   extractId: string,
   options: ExtractServiceOptions,
 ): Promise<ExtractResult> {
@@ -149,7 +148,14 @@ export async function performExtraction(
         cost_tracking: costTracking.toJSON(),
       });
 
-      await billTeam(teamId, subId, creditsToBill, apiKeyId, logger).catch(
+      await billTeam(
+        teamId,
+        subId,
+        creditsToBill,
+        apiKeyId,
+        { endpoint: "extract", jobId: extractId },
+        logger,
+      ).catch(
         error => {
           logger.error(
             `Failed to bill team ${teamId} for ${creditsToBill} credits: ${error}`,
@@ -165,27 +171,6 @@ export async function performExtraction(
     }
 
     const urls = request.urls || ([] as string[]);
-
-    if (
-      request.__experimental_cacheMode == "load" &&
-      request.__experimental_cacheKey &&
-      urls
-    ) {
-      logger.debug("Loading cached docs...");
-      try {
-        const cache = await getCachedDocs(
-          urls,
-          request.__experimental_cacheKey,
-        );
-        for (const doc of cache) {
-          if (doc.metadata.url) {
-            docsMap.set(normalizeUrl(doc.metadata.url), doc);
-          }
-        }
-      } catch (error) {
-        logger.error("Error loading cached docs", { error });
-      }
-    }
 
     // Token tracking
     let tokenUsage: TokenUsage[] = [];
@@ -681,7 +666,14 @@ export async function performExtraction(
           error: "Failed to transform array to object",
           cost_tracking: costTracking.toJSON(),
         });
-        await billTeam(teamId, subId, creditsToBill, apiKeyId, logger).catch(
+        await billTeam(
+          teamId,
+          subId,
+          creditsToBill,
+          apiKeyId,
+          { endpoint: "extract", jobId: extractId },
+          logger,
+        ).catch(
           error => {
             logger.error(
               `Failed to bill team ${teamId} for ${creditsToBill} credits: ${error}`,
@@ -788,7 +780,14 @@ export async function performExtraction(
           model_kind: "fire-1",
           cost_tracking: costTracking.toJSON(),
         });
-        await billTeam(teamId, subId, creditsToBill, apiKeyId, logger).catch(
+        await billTeam(
+          teamId,
+          subId,
+          creditsToBill,
+          apiKeyId,
+          { endpoint: "extract", jobId: extractId },
+          logger,
+        ).catch(
           error => {
             logger.error(
               `Failed to bill team ${teamId} for thinking tokens: ${error}`,
@@ -811,7 +810,14 @@ export async function performExtraction(
         logger.error(errorMessage);
         const tokens_billed = 300 + calculateThinkingCost(costTracking);
         const creditsToBill = Math.ceil(tokens_billed / 15);
-        await billTeam(teamId, subId, creditsToBill, apiKeyId, logger).catch(
+        await billTeam(
+          teamId,
+          subId,
+          creditsToBill,
+          apiKeyId,
+          { endpoint: "extract", jobId: extractId },
+          logger,
+        ).catch(
           error => {
             logger.error(
               `Failed to bill team ${teamId} for thinking tokens: ${error}`,
@@ -998,7 +1004,14 @@ export async function performExtraction(
     const creditsToBill = Math.ceil(tokensToBill / 15);
 
     // Bill team for usage
-    await billTeam(teamId, subId, creditsToBill, apiKeyId, logger).catch(
+    await billTeam(
+      teamId,
+      subId,
+      creditsToBill,
+      apiKeyId,
+      { endpoint: "extract" },
+      logger,
+    ).catch(
       error => {
         logger.error(
           `Failed to bill team ${teamId} for ${creditsToBill} credits: ${error}`,
@@ -1041,21 +1054,6 @@ export async function performExtraction(
 
     logger.debug("Done!");
 
-    if (
-      request.__experimental_cacheMode == "save" &&
-      request.__experimental_cacheKey
-    ) {
-      logger.debug("Saving cached docs...");
-      try {
-        await saveCachedDocs(
-          [...docsMap.values()],
-          request.__experimental_cacheKey,
-        );
-      } catch (error) {
-        logger.error("Error saving cached docs", { error });
-      }
-    }
-
     // fs.writeFile(
     //   `logs/${request.urls?.[0].replaceAll("https://", "").replaceAll("http://", "").replaceAll("/", "-").replaceAll(".", "-")}-extract-${extractId}.json`,
     //   JSON.stringify(log, null, 2),
@@ -1076,7 +1074,14 @@ export async function performExtraction(
   } catch (error) {
     const tokens_billed = 300 + calculateThinkingCost(costTracking);
     const creditsToBill = Math.ceil(tokens_billed / 15);
-    await billTeam(teamId, subId, creditsToBill, apiKeyId, logger).catch(
+    await billTeam(
+      teamId,
+      subId,
+      creditsToBill,
+      apiKeyId,
+      { endpoint: "extract" },
+      logger,
+    ).catch(
       error => {
         logger.error(
           `Failed to bill team ${teamId} for ${creditsToBill} credits: ${error}`,

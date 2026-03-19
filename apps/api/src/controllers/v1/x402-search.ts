@@ -14,7 +14,7 @@ import { addScrapeJob, waitForJob } from "../../services/queue-jobs";
 import { logSearch, logRequest } from "../../services/logging/log_job";
 import { search } from "../../search";
 import { isUrlBlocked } from "../../scraper/WebScraper/utils/blocklist";
-import { BLOCKLISTED_URL_MESSAGE } from "../../lib/strings";
+import { UNSUPPORTED_SITE_MESSAGE } from "../../lib/strings";
 import { logger as _logger } from "../../lib/logger";
 import type { Logger } from "winston";
 import { CostTracking } from "../../lib/cost-tracking";
@@ -27,6 +27,7 @@ import {
   captureExceptionWithZdrCheck,
 } from "../../services/sentry";
 import { getJobPriority } from "../../lib/job-priority";
+import { getSearchZDR } from "../../lib/zdr-helpers";
 
 interface DocumentWithCostTracking {
   document: Document;
@@ -51,12 +52,12 @@ async function scrapeX402SearchResult(
 
   const costTracking = new CostTracking();
 
-  const zeroDataRetention = flags?.forceZDR ?? false;
+  const zeroDataRetention = getSearchZDR(flags) === "forced";
   applyZdrScope(zeroDataRetention);
 
   try {
     if (isUrlBlocked(searchResult.url, flags)) {
-      throw new Error("Could not scrape url: " + BLOCKLISTED_URL_MESSAGE);
+      throw new Error("Could not scrape url: " + UNSUPPORTED_SITE_MESSAGE);
     }
     logger.info("Adding scrape job [x402]", {
       scrapeId: jobId,
@@ -185,10 +186,10 @@ export async function x402SearchController(
     teamId: req.auth.team_id,
     module: "x402-search",
     method: "x402SearchController",
-    zeroDataRetention: req.acuc?.flags?.forceZDR,
+    zeroDataRetention: getSearchZDR(req.acuc?.flags) === "forced",
   });
 
-  if (req.acuc?.flags?.forceZDR) {
+  if (getSearchZDR(req.acuc?.flags) === "forced") {
     return res.status(400).json({
       success: false,
       error:
@@ -199,6 +200,7 @@ export async function x402SearchController(
   let responseData: SearchResponse = {
     success: true,
     data: [],
+    id: jobId,
   };
   const startTime = new Date().getTime();
   const isSearchPreview =

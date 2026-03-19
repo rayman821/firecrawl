@@ -13,19 +13,85 @@ import { validateIdempotencyKey } from "../services/idempotency/validate";
 import { checkTeamCredits } from "../services/billing/credit_billing";
 import { isUrlBlocked } from "../scraper/WebScraper/utils/blocklist";
 import { logger } from "../lib/logger";
-import { BLOCKLISTED_URL_MESSAGE } from "../lib/strings";
-import { addDomainFrequencyJob } from "../services";
+import {
+  httpRequestDurationSeconds,
+  getRoutePattern,
+} from "../lib/http-metrics";
+import { UNSUPPORTED_SITE_MESSAGE } from "../lib/strings";
 import * as geoip from "geoip-country";
 import { isSelfHosted } from "../lib/deployment";
 import { validate as isUuid } from "uuid";
 
 import { config } from "../config";
+import { supabase_service } from "../services/supabase";
+import {
+  autumnService,
+  isAutumnCheckEnabled,
+  isAutumnCheckDryRun,
+} from "../services/autumn/autumn.service";
+
 export function checkCreditsMiddleware(
   _minimum?: number,
 ): (req: RequestWithAuth, res: Response, next: NextFunction) => void {
   return (req, res, next) => {
     let minimum = _minimum;
     (async () => {
+      if (
+        config.AGENT_INTEROP_SECRET &&
+        req.body &&
+        (req.body as any).__agentInterop &&
+        (req.body as any).__agentInterop.auth &&
+        (req.body as any).__agentInterop.auth === config.AGENT_INTEROP_SECRET &&
+        (req.body as any).__agentInterop.shouldBill === false
+      ) {
+        return next();
+      }
+
+      // Agent-provisioned key enforcement: check sponsor status and 50-credit cap
+      if (req.acuc?._agentSponsor) {
+        const sponsor = req.acuc._agentSponsor;
+
+        if (sponsor.status === "blocked") {
+          return res.status(403).json({
+            success: false,
+            error: "This API key has been blocked by the account holder.",
+          });
+        }
+
+        if (sponsor.status === "pending") {
+          const deadline = new Date(sponsor.verification_deadline);
+          if (deadline < new Date()) {
+            return res.status(403).json({
+              success: false,
+              error: "sponsor_verification_expired",
+              message:
+                "Sponsor verification has expired. The account holder needs to log in to confirm.",
+              login_url: "https://firecrawl.dev/signin",
+            });
+          }
+
+          // Enforce 50-credit cap for unverified agent keys
+          const UNVERIFIED_CREDIT_LIMIT = 50;
+          if (req.acuc.adjusted_credits_used >= UNVERIFIED_CREDIT_LIMIT) {
+            return res.status(402).json({
+              success: false,
+              error: "unverified_credit_limit_reached",
+              message:
+                "This agent key has used its 50 unverified credits. Ask the account holder to confirm the key to unlock full access.",
+              credit_limit: UNVERIFIED_CREDIT_LIMIT,
+              credits_used: req.acuc.adjusted_credits_used,
+              sponsor_status: "pending",
+              login_url: "https://firecrawl.dev/signin",
+              upgrade_url: "https://firecrawl.dev/pricing",
+            });
+          }
+
+          // Force index-only mode for all pre-confirmation agent requests
+          (req as any).agentIndexOnly = true;
+        }
+        // If verified, fall through to normal credit check (key is now on real account)
+      }
+
       if (!minimum && req.body) {
         minimum = Number(
           (req.body as any)?.limit ?? (req.body as any)?.urls?.length ?? 1,
@@ -34,11 +100,77 @@ export function checkCreditsMiddleware(
           minimum = undefined;
         }
       }
-      const { success, remainingCredits, chunk } = await checkTeamCredits(
-        req.acuc ?? null,
-        req.auth.team_id,
-        minimum ?? 1,
-      );
+
+      if (req.path.startsWith("/agent")) {
+        if (config.USE_DB_AUTHENTICATION) {
+          const { data, error: freeRequestError } = await supabase_service.rpc(
+            "get_agent_free_requests_left",
+            {
+              i_team_id: req.auth.team_id,
+            },
+          );
+
+          if (freeRequestError) {
+            logger.warn("Failed to get agent free requests left", {
+              error: freeRequestError,
+              teamId: req.auth.team_id,
+            });
+          } else {
+            if (data?.[0]?.free_requests_left !== 0) {
+              return next();
+            }
+          }
+        }
+      }
+
+      const requestedCredits = minimum ?? 1;
+      const useAutumnCheck =
+        !!req.auth.org_id &&
+        isAutumnCheckEnabled(req.auth.org_id) &&
+        !req.acuc?.is_extract;
+
+      const autumnProperties = {
+        source: "checkCreditsMiddleware",
+        path: req.path,
+      };
+      const [legacyCheck, autumnAllowed] = await Promise.all([
+        checkTeamCredits(req.acuc ?? null, req.auth.team_id, requestedCredits),
+        useAutumnCheck
+          ? autumnService.checkCredits({
+              teamId: req.auth.team_id,
+              value: requestedCredits,
+              properties: autumnProperties,
+            })
+          : null,
+      ]);
+      let { success, remainingCredits, chunk } = legacyCheck;
+
+      if (autumnAllowed !== null) {
+        const dryRun = isAutumnCheckDryRun();
+        if (autumnAllowed !== legacyCheck.success) {
+          logger.warn("Autumn check result diverged from legacy credit gate", {
+            teamId: req.auth.team_id,
+            path: req.path,
+            requestedCredits,
+            autumnAllowed,
+            legacyAllowed: legacyCheck.success,
+            dryRun,
+          });
+        }
+        if (dryRun) {
+          logger.info("Autumn check dry-run result (not enforced)", {
+            teamId: req.auth.team_id,
+            path: req.path,
+            requestedCredits,
+            autumnAllowed,
+            legacyAllowed: legacyCheck.success,
+          });
+        } else {
+          success = autumnAllowed;
+        }
+        remainingCredits = legacyCheck.remainingCredits;
+      }
+
       if (chunk) {
         req.acuc = chunk;
       }
@@ -107,18 +239,6 @@ export function authMiddleware(
         currentRateLimiterMode = RateLimiterMode.ExtractAgentPreview;
       }
 
-      // Track domain frequency regardless of caching
-      try {
-        // Use the URL from the request body if available
-        const urlToTrack = (req.body as any)?.url;
-        if (urlToTrack) {
-          // await addDomainFrequencyJob(urlToTrack);
-        }
-      } catch (error) {
-        // Log error without meta.logger since it's not available in this context
-        logger.warn("Failed to track domain frequency", { error });
-      }
-
       // if (currentRateLimiterMode === RateLimiterMode.Scrape && isAgentExtractModelValid((req.body as any)?.agent?.model)) {
       //   currentRateLimiterMode = RateLimiterMode.ScrapeAgentPreview;
       // }
@@ -135,9 +255,9 @@ export function authMiddleware(
         }
       }
 
-      const { team_id, chunk } = auth;
+      const { team_id, org_id, chunk } = auth;
 
-      req.auth = { team_id };
+      req.auth = { team_id, org_id };
       req.acuc = chunk ?? undefined;
       if (chunk) {
         req.account = {
@@ -183,7 +303,7 @@ export function blocklistMiddleware(
     if (!res.headersSent) {
       return res.status(403).json({
         success: false,
-        error: BLOCKLISTED_URL_MESSAGE,
+        error: UNSUPPORTED_SITE_MESSAGE,
       });
     }
   }
@@ -282,6 +402,14 @@ export function requestTimingMiddleware(version: string) {
     const originalJson = res.json.bind(res);
     res.json = function (body: any) {
       const requestTime = new Date().getTime() - startTime;
+
+      const durationSeconds = requestTime / 1000;
+      const route = getRoutePattern(req);
+      const status = String(res.statusCode);
+
+      httpRequestDurationSeconds
+        .labels(version, req.method, route, status)
+        .observe(durationSeconds);
 
       // Only log for successful responses to avoid duplicate error logs
       if (body?.success !== false) {

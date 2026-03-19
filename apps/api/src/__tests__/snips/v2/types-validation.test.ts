@@ -19,6 +19,7 @@ import {
   BatchScrapeRequestInput,
   SearchRequest,
   SearchRequestInput,
+  toV2CrawlerOptions,
 } from "../../../controllers/v2/types";
 
 describe("V2 Types Validation", () => {
@@ -224,6 +225,7 @@ describe("V2 Types Validation", () => {
       expect(result.origin).toBe("api");
       expect(result.formats).toEqual([{ type: "markdown" }]);
       expect(result.onlyMainContent).toBe(true);
+      expect(result.onlyCleanContent).toBe(false);
       expect(result.waitFor).toBe(0);
       expect(result.mobile).toBe(false);
       expect(result.removeBase64Images).toBe(true);
@@ -231,6 +233,16 @@ describe("V2 Types Validation", () => {
       expect(result.blockAds).toBe(true);
       expect(result.proxy).toBe("auto"); // v2 default is "auto"
       expect(result.storeInCache).toBe(true);
+    });
+
+    it("should accept scrape request with onlyCleanContent=true", () => {
+      const input: ScrapeRequestInput = {
+        url: "https://example.com",
+        onlyCleanContent: true,
+      };
+
+      const result = scrapeRequestSchema.parse(input);
+      expect(result.onlyCleanContent).toBe(true);
     });
 
     it("should accept valid integration value", () => {
@@ -606,11 +618,11 @@ describe("V2 Types Validation", () => {
     it("should handle sitemap enum values", () => {
       const input: CrawlRequestInput = {
         url: "https://example.com",
-        sitemap: "include",
+        sitemap: "only",
       };
 
       const result = crawlRequestSchema.parse(input);
-      expect(result.sitemap).toBe("include");
+      expect(result.sitemap).toBe("only");
     });
 
     it("should reject invalid sitemap value", () => {
@@ -620,6 +632,15 @@ describe("V2 Types Validation", () => {
       };
 
       expect(() => crawlRequestSchema.parse(input)).toThrow();
+    });
+
+    it("should map sitemapOnly to sitemap=only", () => {
+      const result = toV2CrawlerOptions({
+        sitemapOnly: true,
+        ignoreSitemap: false,
+      });
+
+      expect(result.sitemap).toBe("only");
     });
   });
 
@@ -852,6 +873,31 @@ describe("V2 Types Validation", () => {
 
       const result = searchRequestSchema.parse(input);
       expect(result.enterprise).toEqual(["default", "zdr"]);
+    });
+
+    it("should accept search scrapeOptions with query format", () => {
+      const input: SearchRequestInput = {
+        query: "test",
+        scrapeOptions: {
+          formats: [{ type: "query", prompt: "What is Firecrawl?" }],
+        },
+      };
+
+      const result = searchRequestSchema.parse(input);
+      expect(result.scrapeOptions?.formats).toEqual([
+        { type: "query", prompt: "What is Firecrawl?" },
+      ]);
+    });
+
+    it("should reject search scrapeOptions query prompt over 10000 characters", () => {
+      const input: SearchRequestInput = {
+        query: "test",
+        scrapeOptions: {
+          formats: [{ type: "query", prompt: "a".repeat(10001) }],
+        },
+      };
+
+      expect(() => searchRequestSchema.parse(input)).toThrow();
     });
   });
 

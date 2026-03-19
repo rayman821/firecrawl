@@ -6,15 +6,12 @@ import {
   extractRequestSchema,
   ExtractResponse,
 } from "./types";
-import { getExtractQueue } from "../../services/queue-service";
+import { addExtractJobToQueue } from "../../services/queue-service";
 import { saveExtract } from "../../lib/extract/extract-redis";
 import { getTeamIdSyncB } from "../../lib/extract/team-id-sync";
-import {
-  ExtractResult,
-  performExtraction,
-} from "../../lib/extract/extraction-service";
+import { ExtractResult } from "../../lib/extract/extraction-service";
 import { performExtraction_F0 } from "../../lib/extract/fire-0/extraction-service-f0";
-import { BLOCKLISTED_URL_MESSAGE } from "../../lib/strings";
+import { UNSUPPORTED_SITE_MESSAGE } from "../../lib/strings";
 import { isUrlBlocked } from "../../scraper/WebScraper/utils/blocklist";
 import { logger as _logger } from "../../lib/logger";
 import {
@@ -23,6 +20,7 @@ import {
 } from "../v2/types";
 import { createWebhookSender, WebhookEvent } from "../../services/webhook";
 import { logRequest } from "../../services/logging/log_job";
+import { getScrapeZDR } from "../../lib/zdr-helpers";
 
 import { config } from "../../config";
 async function oldExtract(
@@ -59,22 +57,12 @@ async function oldExtract(
     } as V2ExtractRequest;
 
     let result: ExtractResult;
-    const model = req.body.agent?.model;
-    if (req.body.agent && model && model.toLowerCase().includes("fire-1")) {
-      result = await performExtraction(extractId, {
-        request,
-        teamId: req.auth.team_id,
-        subId: req.acuc?.sub_id ?? undefined,
-        apiKeyId: req.acuc?.api_key_id ?? null,
-      });
-    } else {
-      result = await performExtraction_F0(extractId, {
-        request,
-        teamId: req.auth.team_id,
-        subId: req.acuc?.sub_id ?? undefined,
-        apiKeyId: req.acuc?.api_key_id ?? null,
-      });
-    }
+    result = await performExtraction_F0(extractId, {
+      request,
+      teamId: req.auth.team_id,
+      subId: req.acuc?.sub_id ?? undefined,
+      apiKeyId: req.acuc?.api_key_id ?? null,
+    });
 
     if (sender) {
       if (result.success) {
@@ -118,7 +106,7 @@ export async function extractController(
   const originalRequest = { ...req.body };
   req.body = extractRequestSchema.parse(req.body);
 
-  if (req.acuc?.flags?.forceZDR) {
+  if (getScrapeZDR(req.acuc?.flags) === "forced") {
     return res.status(400).json({
       success: false,
       error:
@@ -137,7 +125,7 @@ export async function extractController(
     if (!res.headersSent) {
       return res.status(403).json({
         success: false,
-        error: BLOCKLISTED_URL_MESSAGE,
+        error: UNSUPPORTED_SITE_MESSAGE,
       });
     }
   }
@@ -151,7 +139,7 @@ export async function extractController(
     team_id: req.auth.team_id,
     subId: req.acuc?.sub_id,
     extractId,
-    zeroDataRetention: req.acuc?.flags?.forceZDR,
+    zeroDataRetention: getScrapeZDR(req.acuc?.flags) === "forced",
   });
 
   await logRequest({
@@ -206,12 +194,10 @@ export async function extractController(
     showLLMUsage: req.body.__experimental_llmUsage,
     showSources: req.body.__experimental_showSources || req.body.showSources,
     showCostTracking: req.body.__experimental_showCostTracking,
-    zeroDataRetention: req.acuc?.flags?.forceZDR,
+    zeroDataRetention: getScrapeZDR(req.acuc?.flags) === "forced",
   });
 
-  await getExtractQueue().add(extractId, jobData, {
-    jobId: extractId,
-  });
+  await addExtractJobToQueue(extractId, jobData);
 
   return res.status(200).json({
     success: true,

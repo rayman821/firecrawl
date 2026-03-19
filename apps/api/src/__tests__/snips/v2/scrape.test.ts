@@ -7,6 +7,7 @@ import {
   TEST_PRODUCTION,
   TEST_SELF_HOST,
   TEST_SUITE_WEBSITE,
+  HAS_FIRE_ENGINE,
   HAS_PLAYWRIGHT,
   HAS_PROXY,
   HAS_AI,
@@ -26,8 +27,10 @@ import {
 } from "./lib";
 import request from "./lib";
 import crypto from "crypto";
+import { z } from "zod";
 
 const CHANGE_TRACKING_TEST_URL = `${TEST_SUITE_WEBSITE}?testId=${crypto.randomUUID()}`;
+const stringbool = z.stringbool().catch(false);
 
 let identity: Identity;
 
@@ -51,6 +54,20 @@ beforeAll(async () => {
 
 describe("Scrape tests", () => {
   const base = TEST_SUITE_WEBSITE;
+  const playwrightAllowsLocalTargets = stringbool.parse(
+    process.env.ALLOW_LOCAL_WEBHOOKS,
+  );
+  const createSelfHostedLocalUrl = () => {
+    const target = new URL(TEST_SUITE_WEBSITE);
+    target.searchParams.set("testId", crypto.randomUUID());
+    return target.toString();
+  };
+
+  const createDnsResolvedLocalUrl = () => {
+    const target = new URL(createSelfHostedLocalUrl());
+    target.hostname = "localtest.me";
+    return target.toString();
+  };
 
   concurrentIf(ALLOW_TEST_SUITE_WEBSITE)(
     "works",
@@ -137,6 +154,22 @@ describe("Scrape tests", () => {
       scrapeTimeout,
     );
   });
+
+  it.concurrent(
+    "returns 400 for invalid URL",
+    async () => {
+      const raw = await scrapeRaw(
+        {
+          url: "not-a-valid-url",
+        } as any,
+        identity,
+      );
+
+      expect(raw.statusCode).toBe(400);
+      expect(raw.body.success).toBe(false);
+    },
+    scrapeTimeout,
+  );
 
   // TEMP: domain broken
   // it.concurrent("works with Punycode domains", async () => {
@@ -262,6 +295,50 @@ describe("Scrape tests", () => {
     scrapeTimeout,
   );
 
+  concurrentIf(
+    TEST_SELF_HOST &&
+      HAS_PLAYWRIGHT &&
+      ALLOW_TEST_SUITE_WEBSITE &&
+      playwrightAllowsLocalTargets,
+  )(
+    "playwright allows local-network targets when ALLOW_LOCAL_WEBHOOKS is enabled",
+    async () => {
+      const response = await scrape(
+        {
+          url: createSelfHostedLocalUrl(),
+          waitFor: 100,
+        },
+        identity,
+      );
+
+      expect(response.markdown).toContain("Firecrawl");
+    },
+    scrapeTimeout,
+  );
+
+  concurrentIf(
+    TEST_SELF_HOST && HAS_PLAYWRIGHT && !playwrightAllowsLocalTargets,
+  )(
+    "playwright blocks local-network targets resolved via DNS",
+    async () => {
+      const raw = await scrapeRaw(
+        {
+          url: createDnsResolvedLocalUrl(),
+          waitFor: 100,
+        },
+        identity,
+      );
+
+      expect(raw.statusCode).toBe(200);
+      expect(raw.body.success).toBe(true);
+      expect(raw.body.data?.metadata?.statusCode).toBe(403);
+      expect(raw.body.data?.metadata?.error).toContain(
+        "Blocked insecure target URL",
+      );
+    },
+    scrapeTimeout,
+  );
+
   concurrentIf(TEST_PRODUCTION || (HAS_PLAYWRIGHT && ALLOW_TEST_SUITE_WEBSITE))(
     "waitFor works",
     async () => {
@@ -274,6 +351,30 @@ describe("Scrape tests", () => {
       );
 
       expect(response.markdown).toContain("Firecrawl");
+    },
+    scrapeTimeout,
+  );
+
+  itIf(TEST_SELF_HOST && !HAS_FIRE_ENGINE)(
+    "rejects actions when fire-engine is not configured",
+    async () => {
+      const raw = await scrapeRaw(
+        {
+          url: "https://example.com",
+          actions: [
+            {
+              type: "wait",
+              milliseconds: 1000,
+            },
+          ],
+        },
+        identity,
+      );
+
+      expect(raw.statusCode).toBe(400);
+      expect(raw.body.success).toBe(false);
+      expect(raw.body.code).toBe("SCRAPE_ACTIONS_NOT_SUPPORTED");
+      expect(raw.body.error).toContain("Actions are not supported");
     },
     scrapeTimeout,
   );

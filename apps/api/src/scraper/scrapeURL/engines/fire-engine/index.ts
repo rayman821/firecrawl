@@ -2,9 +2,10 @@ import { Logger } from "winston";
 import { Meta } from "../..";
 import {
   fireEngineScrape,
+  fireEngineURL,
+  fireEngineStagingURL,
   FireEngineScrapeRequestChromeCDP,
   FireEngineScrapeRequestCommon,
-  FireEngineScrapeRequestPlaywright,
   FireEngineScrapeRequestTLSClient,
 } from "./scrape";
 import { EngineScrapeResult } from "..";
@@ -29,11 +30,16 @@ import { fireEngineDelete } from "./delete";
 import { MockState } from "../../lib/mock";
 import { getInnerJson } from "@mendable/firecrawl-rs";
 import { hasFormatOfType } from "../../../../lib/format-utils";
-import { Action } from "../../../../controllers/v1/types";
+import { InternalAction } from "../../../../controllers/v1/types";
 import { AbortManagerThrownError } from "../../lib/abortManager";
 import { youtubePostprocessor } from "../../postprocessors/youtube";
 import { withSpan, setSpanAttributes } from "../../../../lib/otel-tracer";
 import { getBrandingScript } from "./brandingScript";
+import { abTestFireEngine } from "../../../../services/ab-test";
+import { scheduleABComparison } from "../../../../services/ab-test-comparison";
+
+/** Default wait (ms) before running the branding script when user did not set waitFor. Lets the page settle so DOM/images are ready and reduces JS errors. */
+const BRANDING_DEFAULT_WAIT_MS = 2000;
 
 // This function does not take `Meta` on purpose. It may not access any
 // meta values to construct the request -- that must be done by the
@@ -41,7 +47,6 @@ import { getBrandingScript } from "./brandingScript";
 async function performFireEngineScrape<
   Engine extends
     | FireEngineScrapeRequestChromeCDP
-    | FireEngineScrapeRequestPlaywright
     | FireEngineScrapeRequestTLSClient,
 >(
   meta: Meta,
@@ -55,6 +60,13 @@ async function performFireEngineScrape<
     const startTime = Date.now();
     let pollCount = 0;
 
+    let baseUrl = production ? fireEngineURL : fireEngineStagingURL;
+
+    const abTest = abTestFireEngine(request);
+    if (abTest.mode === "split") {
+      baseUrl = abTest.baseUrl;
+    }
+
     setSpanAttributes(span, {
       "fire-engine.url": request.url,
       "fire-engine.priority": request.priority,
@@ -65,6 +77,7 @@ async function performFireEngineScrape<
       "fire-engine.mobile": (request as any).mobile,
       "fire-engine.skip_tls": (request as any).skipTlsVerification,
       "fire-engine.production": production,
+      "fire-engine.ab_mode": abTest.mode,
     });
     const scrape = await fireEngineScrape(
       meta,
@@ -72,7 +85,7 @@ async function performFireEngineScrape<
       request,
       mock,
       abort,
-      production,
+      baseUrl,
     );
 
     let status: FireEngineCheckStatusSuccess | undefined = undefined;
@@ -91,7 +104,7 @@ async function performFireEngineScrape<
             (scrape as any).jobId,
             mock,
             undefined,
-            production,
+            baseUrl,
           ).catch(e => {
             logger.error("Failed to delete job from Fire Engine", { error: e });
           });
@@ -110,7 +123,7 @@ async function performFireEngineScrape<
             (scrape as any).jobId,
             mock,
             abort,
-            production,
+            baseUrl,
           );
         } catch (error) {
           if (error instanceof StillProcessingError) {
@@ -133,7 +146,7 @@ async function performFireEngineScrape<
               (scrape as any).jobId,
               mock,
               undefined,
-              production,
+              baseUrl,
             ).catch(e => {
               logger.error("Failed to delete job from Fire Engine", {
                 error: e,
@@ -153,7 +166,7 @@ async function performFireEngineScrape<
               (scrape as any).jobId,
               mock,
               undefined,
-              production,
+              baseUrl,
             ).catch(e => {
               logger.error("Failed to delete job from Fire Engine", {
                 error: e,
@@ -206,17 +219,32 @@ async function performFireEngineScrape<
       (scrape as any).jobId,
       mock,
       undefined,
-      production,
+      baseUrl,
     ).catch(e => {
       logger.error("Failed to delete job from Fire Engine", { error: e });
     });
+
+    if (abTest.mode === "mirror") {
+      scheduleABComparison(
+        meta.url,
+        {
+          content: status.content,
+          pageStatusCode: status.pageStatusCode,
+        },
+        Date.now() - startTime,
+        abTest.mirrorPromise,
+        logger,
+      );
+    }
 
     setSpanAttributes(span, {
       "fire-engine.poll_count": pollCount,
       "fire-engine.duration_ms": Date.now() - startTime,
       "fire-engine.status_code": status.pageStatusCode,
       "fire-engine.content_length": status.content?.length,
-      "fire-engine.has_screenshot": !!status.screenshot,
+      "fire-engine.has_screenshot": !!(
+        status.screenshots && status.screenshots.length > 0
+      ),
       "fire-engine.has_pdf": !!(status as any).pdf,
       "fire-engine.job_id": (scrape as any).jobId,
     });
@@ -234,20 +262,30 @@ export async function scrapeURLWithFireEngineChromeCDP(
       "engine.url": meta.url,
       "engine.team_id": meta.internalOptions.teamId,
     });
-    const actions: Action[] = [
-      // Transform waitFor option into an action (unsupported by chrome-cdp)
-      ...(meta.options.waitFor !== 0
+    const hasBranding = hasFormatOfType(meta.options.formats, "branding");
+    const defaultWait = hasBranding ? BRANDING_DEFAULT_WAIT_MS : 0;
+    const effectiveWait =
+      meta.options.waitFor != null && meta.options.waitFor !== 0
+        ? meta.options.waitFor
+        : defaultWait;
+
+    const actions: InternalAction[] = [
+      // Transform waitFor option into an action (unsupported by chrome-cdp).
+      // When branding is requested and user didn't set waitFor, use a default wait so the page is ready and we avoid JS errors.
+      ...(effectiveWait > 0
         ? [
             {
               type: "wait" as const,
-              milliseconds:
-                meta.options.waitFor > 30000 ? 30000 : meta.options.waitFor,
+              milliseconds: effectiveWait > 30000 ? 30000 : effectiveWait,
             },
           ]
         : []),
 
       // Include specified actions
-      ...(meta.options.actions ?? []),
+      ...(meta.options.actions ?? []).map(action => {
+        const { metadata: _, ...rest } = action as InternalAction;
+        return rest;
+      }),
 
       // Transform screenshot format into an action (unsupported by chrome-cdp)
       ...(hasFormatOfType(meta.options.formats, "screenshot")
@@ -273,6 +311,7 @@ export async function scrapeURLWithFireEngineChromeCDP(
             {
               type: "executeJavascript" as const,
               script: getBrandingScript(),
+              metadata: { __firecrawl_internal: true },
             },
           ]
         : []),
@@ -293,6 +332,7 @@ export async function scrapeURLWithFireEngineChromeCDP(
     const request: FireEngineScrapeRequestCommon &
       FireEngineScrapeRequestChromeCDP = {
       url: meta.rewrittenUrl ?? meta.url,
+      scrapeId: meta.id,
       engine: "chrome-cdp",
       instantReturn: false,
       skipTlsVerification: meta.options.skipTlsVerification,
@@ -327,19 +367,12 @@ export async function scrapeURLWithFireEngineChromeCDP(
       true,
     );
 
+    let screenshot: string | undefined;
     if (hasFormatOfType(meta.options.formats, "screenshot")) {
-      // meta.logger.debug(
-      //   "Transforming screenshots from actions into screenshot field",
-      //   { screenshots: response.screenshots },
-      // );
-      if (response.screenshots) {
-        response.screenshot = response.screenshots.slice(-1)[0];
+      if (response.screenshots && response.screenshots.length > 0) {
+        screenshot = response.screenshots.slice(-1)[0];
         response.screenshots = response.screenshots.slice(0, -1);
       }
-      // meta.logger.debug("Screenshot transformation done", {
-      //   screenshots: response.screenshots,
-      //   screenshot: response.screenshot,
-      // });
     }
 
     if (!response.url) {
@@ -395,7 +428,7 @@ export async function scrapeURLWithFireEngineChromeCDP(
           x => x[0].toLowerCase() === "content-type",
         ) ?? [])[1] ?? undefined,
 
-      screenshot: response.screenshot,
+      screenshot,
       ...(actions.length > 0
         ? {
             actions: {
@@ -416,83 +449,6 @@ export async function scrapeURLWithFireEngineChromeCDP(
   });
 }
 
-export async function scrapeURLWithFireEnginePlaywright(
-  meta: Meta,
-): Promise<EngineScrapeResult> {
-  return withSpan("engine.fire-engine.playwright", async span => {
-    setSpanAttributes(span, {
-      "engine.type": "fire-engine-playwright",
-      "engine.url": meta.url,
-      "engine.team_id": meta.internalOptions.teamId,
-    });
-    const totalWait = meta.options.waitFor;
-
-    const request: FireEngineScrapeRequestCommon &
-      FireEngineScrapeRequestPlaywright = {
-      url: meta.rewrittenUrl ?? meta.url,
-      engine: "playwright",
-      instantReturn: false,
-
-      headers: meta.options.headers,
-      priority: meta.internalOptions.priority,
-      screenshot:
-        hasFormatOfType(meta.options.formats, "screenshot") !== undefined,
-      fullPageScreenshot: hasFormatOfType(meta.options.formats, "screenshot")
-        ?.fullPage,
-      wait: meta.options.waitFor,
-      geolocation: meta.options.location,
-      blockAds: meta.options.blockAds,
-      mobileProxy: meta.featureFlags.has("stealthProxy"),
-
-      timeout: meta.abort.scrapeTimeout() ?? 300000,
-      saveScrapeResultToGCS:
-        !meta.internalOptions.zeroDataRetention &&
-        meta.internalOptions.saveScrapeResultToGCS,
-      zeroDataRetention: meta.internalOptions.zeroDataRetention,
-    };
-
-    let response = await performFireEngineScrape(
-      meta,
-      meta.logger.child({
-        method: "scrapeURLWithFireEnginePlaywright/callFireEngine",
-        request,
-      }),
-      request,
-      meta.mock,
-      meta.abort.asSignal(),
-    );
-
-    if (!response.url) {
-      meta.logger.warn("Fire-engine did not return the response's URL", {
-        response,
-        sourceURL: meta.url,
-      });
-    }
-
-    return {
-      url: response.url ?? meta.url,
-
-      html: response.content,
-      error: response.pageError,
-      statusCode: response.pageStatusCode,
-
-      contentType:
-        (Object.entries(response.responseHeaders ?? {}).find(
-          x => x[0].toLowerCase() === "content-type",
-        ) ?? [])[1] ?? undefined,
-
-      ...(response.screenshots !== undefined && response.screenshots.length > 0
-        ? {
-            screenshot: response.screenshots[0],
-          }
-        : {}),
-
-      proxyUsed: response.usedMobileProxy ? "stealth" : "basic",
-      timezone: response.timezone,
-    };
-  });
-}
-
 export async function scrapeURLWithFireEngineTLSClient(
   meta: Meta,
 ): Promise<EngineScrapeResult> {
@@ -505,6 +461,7 @@ export async function scrapeURLWithFireEngineTLSClient(
     const request: FireEngineScrapeRequestCommon &
       FireEngineScrapeRequestTLSClient = {
       url: meta.rewrittenUrl ?? meta.url,
+      scrapeId: meta.id,
       engine: "tlsclient",
       instantReturn: false,
 
@@ -561,15 +518,20 @@ export async function scrapeURLWithFireEngineTLSClient(
 
 export function fireEngineMaxReasonableTime(
   meta: Meta,
-  engine: "chrome-cdp" | "playwright" | "tlsclient",
+  engine: "chrome-cdp" | "tlsclient",
 ): number {
+  const hasBranding = hasFormatOfType(meta.options.formats, "branding");
+  const defaultWait = hasBranding ? BRANDING_DEFAULT_WAIT_MS : 0;
+  const effectiveWait =
+    meta.options.waitFor != null && meta.options.waitFor !== 0
+      ? meta.options.waitFor
+      : defaultWait;
+
   if (engine === "tlsclient") {
     return 15000;
-  } else if (engine === "playwright") {
-    return (meta.options.waitFor ?? 0) + 30000;
   } else {
     return (
-      (meta.options.waitFor ?? 0) +
+      effectiveWait +
       (meta.options.actions?.reduce(
         (a, x) => (x.type === "wait" ? (x.milliseconds ?? 2500) + a : 250 + a),
         0,

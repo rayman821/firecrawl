@@ -1,8 +1,7 @@
 import { Logger } from "winston";
-import * as Sentry from "@sentry/node";
 import { z } from "zod";
 
-import { Action } from "../../../../controllers/v1/types";
+import { InternalAction } from "../../../../controllers/v1/types";
 import { robustFetch } from "../../lib/fetch";
 import { MockState } from "../../lib/mock";
 import { getDocFromGCS } from "../../../../lib/gcs-jobs";
@@ -17,11 +16,11 @@ import {
   UnsupportedFileError,
 } from "../../error";
 import { Meta } from "../..";
-import { abTestFireEngine } from "../../../../services/ab-test";
 
 import { config } from "../../../../config";
 export type FireEngineScrapeRequestCommon = {
   url: string;
+  scrapeId?: string;
 
   headers?: { [K: string]: string };
 
@@ -50,21 +49,10 @@ export type FireEngineScrapeRequestCommon = {
 export type FireEngineScrapeRequestChromeCDP = {
   engine: "chrome-cdp";
   skipTlsVerification?: boolean;
-  actions?: Action[];
+  actions?: InternalAction[];
   blockMedia?: boolean;
   mobile?: boolean;
   disableSmartWaitCache?: boolean;
-};
-
-export type FireEngineScrapeRequestPlaywright = {
-  engine: "playwright";
-  blockAds?: boolean; // default: true
-
-  // mutually exclusive, default: false
-  screenshot?: boolean;
-  fullPageScreenshot?: boolean;
-
-  wait?: number; // default: 0
 };
 
 export type FireEngineScrapeRequestTLSClient = {
@@ -89,10 +77,6 @@ const successSchema = z.object({
   // timeTakenCookie: z.number().optional(),
   // timeTakenRequest: z.number().optional(),
 
-  // legacy: playwright only
-  screenshot: z.string().optional(),
-
-  // new: actions
   screenshots: z.string().array().optional(),
   actionContent: z
     .object({
@@ -177,7 +161,6 @@ export const fireEngineStagingURL =
 export async function fireEngineScrape<
   Engine extends
     | FireEngineScrapeRequestChromeCDP
-    | FireEngineScrapeRequestPlaywright
     | FireEngineScrapeRequestTLSClient,
 >(
   meta: Meta,
@@ -185,12 +168,10 @@ export async function fireEngineScrape<
   request: FireEngineScrapeRequestCommon & Engine,
   mock: MockState | null,
   abort?: AbortSignal,
-  production = true,
+  baseUrl: string = fireEngineURL,
 ): Promise<z.infer<typeof processingSchema> | FireEngineCheckStatusSuccess> {
-  abTestFireEngine(request);
-
   let status = await robustFetch({
-    url: `${production ? fireEngineURL : fireEngineStagingURL}/scrape`,
+    url: `${baseUrl}/scrape`,
     method: "POST",
     headers: {},
     body: request,
@@ -215,6 +196,14 @@ export async function fireEngineScrape<
   const failedParse = failedSchema.safeParse(status);
 
   if (successParse.success) {
+    // Check if this is an unsupported media type error (e.g., binary file)
+    if (
+      successParse.data.pageStatusCode === 415 &&
+      successParse.data.pageError?.startsWith("Unsupported Media Type:")
+    ) {
+      throw new UnsupportedFileError(successParse.data.pageError);
+    }
+
     logger.debug("Scrape succeeded!");
     return successParse.data;
   } else if (processingParse.success) {

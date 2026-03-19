@@ -10,20 +10,25 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/mdx": "^4.3.12",
-    "@astrojs/rss": "^4.0.12",
-    "@astrojs/sitemap": "^3.6.0",
-    "astro": "^5.16.0",
-    "sharp": "^0.34.3"
+    "@astrojs/mdx": "^4.3.13",
+    "@astrojs/rss": "^4.0.17",
+    "@astrojs/sitemap": "^3.7.0",
+    "astro": "^5.18.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
-    "prettier": "^3.6.2",
+    "prettier": "^3.8.1",
     "prettier-plugin-astro": "^0.14.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
       "sharp"
-    ]
+    ],
+    "overrides": {
+      "fast-xml-parser": "^5.5.6",
+      "devalue": ">=5.6.4",
+      "h3": ">=1.15.6"
+    }
   }
 }
