@@ -4144,14 +4144,69 @@
           }
         ]
       },
+      "ExtractStatusResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "status": {
+                "type": "string",
+                "enum": ["processing", "completed", "failed"]
+              },
+              "data": {},
+              "expiresAt": {
+                "type": "string"
+              },
+              "steps": {},
+              "llmUsage": {},
+              "sources": {},
+              "tokensUsed": {
+                "type": "number"
+              },
+              "creditsUsed": {
+                "type": "number"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["success", "status", "expiresAt"],
+            "additionalProperties": false
+          }
+        ]
+      },
       "CrawlParamsPreviewRequest": {
         "type": "object",
         "properties": {
           "url": {
-            "type": "string"
+            "type": "string",
+            "format": "uri"
           },
           "prompt": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 10000
           }
         },
         "required": ["url", "prompt"]
@@ -4635,6 +4690,7 @@
           "streamWebView": {
             "type": "boolean"
           },
+          "integration": {},
           "profile": {
             "type": "object",
             "properties": {
@@ -4716,6 +4772,9 @@
           },
           "timeout": {
             "type": "number"
+          },
+          "origin": {
+            "type": "string"
           }
         },
         "required": ["code"]
@@ -5465,7 +5524,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExtractResponse"
+                  "$ref": "#/components/schemas/ExtractStatusResponse"
                 }
               }
             }
@@ -5901,40 +5960,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BrowserDeleteResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/x402/search": {
-      "post": {
-        "tags": ["Search"],
-        "operationId": "X402 Search",
-        "description": "Search endpoint with micropayment via X402 protocol.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SearchRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/X402SearchResponse"
                 }
               }
             }

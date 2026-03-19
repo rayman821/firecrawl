@@ -286,8 +286,8 @@ async function main() {
 
   // CrawlParamsPreviewRequest
   const CrawlParamsPreviewRequestSchema = z.object({
-    url: z.string(),
-    prompt: z.string(),
+    url: z.url(),
+    prompt: z.string().max(10000),
   });
 
   // CrawlParamsPreviewResponse
@@ -403,6 +403,7 @@ async function main() {
     ttl: z.number().optional(),
     activityTtl: z.number().optional(),
     streamWebView: z.boolean().optional(),
+    integration: z.any().optional(),
     profile: z
       .object({
         name: z.string(),
@@ -429,6 +430,7 @@ async function main() {
     code: z.string(),
     language: z.enum(["python", "node", "bash"]).optional(),
     timeout: z.number().optional(),
+    origin: z.string().optional(),
   });
 
   // BrowserExecuteResponse
@@ -492,6 +494,23 @@ async function main() {
         .optional(),
       creditsUsed: z.number(),
       id: z.string(),
+    }),
+  ]);
+
+  // ExtractStatusResponse (different from ExtractResponse — returns status payload)
+  const ExtractStatusResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      status: z.enum(["processing", "completed", "failed"]),
+      data: z.any().optional(),
+      expiresAt: z.string(),
+      steps: z.any().optional(),
+      llmUsage: z.any().optional(),
+      sources: z.any().optional(),
+      tokensUsed: z.number().optional(),
+      creditsUsed: z.number().optional(),
+      error: z.string().optional(),
     }),
   ]);
 
@@ -568,6 +587,10 @@ async function main() {
     MapResponse: zodToJsonSchema(MapResponseSchema, "output"),
     SearchResponse: zodToJsonSchema(SearchResponseSchema, "output"),
     ExtractResponse: zodToJsonSchema(ExtractResponseSchema, "output"),
+    ExtractStatusResponse: zodToJsonSchema(
+      ExtractStatusResponseSchema,
+      "output",
+    ),
 
     // Crawl params preview
     CrawlParamsPreviewRequest: zodToJsonSchema(
@@ -933,7 +956,9 @@ async function main() {
             "200": {
               description: "Successful response",
               content: {
-                "application/json": { schema: schemaRef("ExtractResponse") },
+                "application/json": {
+                  schema: schemaRef("ExtractStatusResponse"),
+                },
               },
             },
           },
@@ -1243,32 +1268,37 @@ async function main() {
           },
         },
       },
-      "/x402/search": {
-        post: {
-          tags: ["Search"],
-          operationId: "X402 Search",
-          description: "Search endpoint with micropayment via X402 protocol.",
-          security: [{ bearerAuth: [] }],
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": { schema: schemaRef("SearchRequest") },
-            },
+    },
+  };
+
+  // Only include /x402/search if X402 is enabled (mirrors router gating)
+  if (process.env.X402_PAY_TO_ADDRESS) {
+    doc.paths["/x402/search"] = {
+      post: {
+        tags: ["Search"],
+        operationId: "X402 Search",
+        description:
+          "Search endpoint with micropayment via X402 protocol. Only available when X402 is enabled.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: schemaRef("SearchRequest") },
           },
-          responses: {
-            "200": {
-              description: "Successful response",
-              content: {
-                "application/json": {
-                  schema: schemaRef("X402SearchResponse"),
-                },
+        },
+        responses: {
+          "200": {
+            description: "Successful response",
+            content: {
+              "application/json": {
+                schema: schemaRef("X402SearchResponse"),
               },
             },
           },
         },
       },
-    },
-  };
+    };
+  }
 
   await fs.writeFile(outPath, JSON.stringify(doc, null, 2) + "\n", "utf8");
 }
