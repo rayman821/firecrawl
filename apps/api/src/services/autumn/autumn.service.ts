@@ -23,7 +23,7 @@ const CREDITS_FEATURE_ID = "CREDITS";
  * Org IDs that always have Autumn enabled, regardless of experiment
  * percentage or feature flags.
  */
-const AUTUMN_BYPASS_ORG_IDS = new Set([
+export const AUTUMN_BYPASS_ORG_IDS = new Set([
   "318e9dfd-9d76-489d-86fa-64bcbc3682f9", // Autumn
   "601f9bf3-425c-4309-97ae-4626842738d5", // Autumn
 ]);
