@@ -115,6 +115,79 @@ describe("Scrape browser execute replay", () => {
     scrapeTimeout,
   );
 
+  itIf(canRunReplayHappyPath)(
+    "keeps a non-blank replay tab in the foreground for follow-up execs",
+    async () => {
+      const url = `${TEST_SUITE_WEBSITE}?testId=${crypto.randomUUID()}`;
+      let scrapeId: string | null = null;
+
+      try {
+        const scrapeResponse = await scrapeRaw(
+          {
+            url,
+            origin: "website-replay-test",
+            actions: [
+              {
+                type: "executeJavascript",
+                script: "window.open('about:blank', '_blank');",
+              },
+            ],
+          },
+          identity,
+        );
+
+        expect(scrapeResponse.statusCode).toBe(200);
+        expect(scrapeResponse.body.success).toBe(true);
+        expect(typeof scrapeResponse.body.scrape_id).toBe("string");
+        scrapeId = scrapeResponse.body.scrape_id as string;
+
+        const executeResponse = await executeWithReplicaRetry(
+          scrapeId,
+          {
+            language: "node",
+            timeout: 60,
+            code: `
+              const visibleUrls = [];
+              for (const candidate of page.context().pages()) {
+                try {
+                  const isVisible = await candidate.evaluate(
+                    () => document.visibilityState === "visible",
+                  );
+                  if (isVisible) {
+                    visibleUrls.push(candidate.url());
+                  }
+                } catch {}
+              }
+
+              const visibleNonBlankUrl =
+                visibleUrls.find(value => value !== "about:blank") ?? "about:blank";
+              console.log(visibleNonBlankUrl);
+            `,
+          },
+          identity,
+        );
+
+        expect(executeResponse.statusCode).toBe(200);
+        expect(executeResponse.body.success).toBe(true);
+
+        const visibleUrl =
+          executeResponse.body.stdout
+            ?.trim()
+            .split("\n")
+            .filter(Boolean)
+            .pop() ?? "";
+
+        expect(visibleUrl).not.toBe("about:blank");
+        expect(visibleUrl).toContain(TEST_SUITE_WEBSITE);
+      } finally {
+        if (scrapeId) {
+          await scrapeBrowserDeleteRaw(scrapeId, identity);
+        }
+      }
+    },
+    scrapeTimeout,
+  );
+
   it("returns 400 for invalid scrape job id format", async () => {
     const response = await scrapeExecuteRaw(
       "not-a-valid-uuid",

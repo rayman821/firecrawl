@@ -76,21 +76,6 @@ interface BrowserDeleteResponse {
   error?: string;
 }
 
-interface BrowserListResponse {
-  success: boolean;
-  sessions?: Array<{
-    id: string;
-    status: string;
-    cdpUrl: string;
-    liveViewUrl: string;
-    interactiveLiveViewUrl: string;
-    streamWebView: boolean;
-    createdAt: string;
-    lastActivity: string;
-  }>;
-  error?: string;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -358,11 +343,84 @@ const failReplay = (step, error) => {
   throw new Error(\`\${step}: \${reason}\`);
 };
 
+const listReplayPages = () => page.context().pages().filter(candidate => !candidate.isClosed());
+
+const candidateReplayPages = () => {
+  const pages = listReplayPages();
+  const nonExtensionPages = pages.filter(
+    candidate => !candidate.url().startsWith("chrome-extension://"),
+  );
+  return nonExtensionPages.length > 0 ? nonExtensionPages : pages;
+};
+
+const syncReplayPage = async () => {
+  const pages = candidateReplayPages();
+  if (pages.length === 0) return;
+
+  const isBlankLikeUrl = (url) => url === "" || url === "about:blank";
+
+  let selected = null;
+
+  // Prefer a visible tab that already has useful content.
+  for (let idx = pages.length - 1; idx >= 0; idx -= 1) {
+    const candidate = pages[idx];
+    const url = candidate.url();
+    if (isBlankLikeUrl(url)) continue;
+    try {
+      const isVisible = await candidate.evaluate(
+        () => document.visibilityState === "visible",
+      );
+      if (isVisible) {
+        selected = candidate;
+        break;
+      }
+    } catch {}
+  }
+
+  // Then prefer any non-blank tab (even if it's backgrounded).
+  if (!selected) {
+    for (let idx = pages.length - 1; idx >= 0; idx -= 1) {
+      const candidate = pages[idx];
+      if (!isBlankLikeUrl(candidate.url())) {
+        selected = candidate;
+        break;
+      }
+    }
+  }
+
+  // If everything else is blank-like, at least use the visible page.
+  if (!selected) {
+    for (let idx = pages.length - 1; idx >= 0; idx -= 1) {
+      const candidate = pages[idx];
+      try {
+        const isVisible = await candidate.evaluate(
+          () => document.visibilityState === "visible",
+        );
+        if (isVisible) {
+          selected = candidate;
+          break;
+        }
+      } catch {}
+    }
+  }
+
+  if (!selected) {
+    selected = pages[pages.length - 1];
+  }
+  page = selected;
+
+  try {
+    await page.bringToFront();
+  } catch {}
+};
+
 try {
   await page.goto(replay.targetUrl, { waitUntil: "domcontentloaded" });
 } catch (error) {
   failReplay("Failed to load scrape URL", error);
 }
+
+await syncReplayPage();
 
 if (typeof replay.waitForMs === "number" && replay.waitForMs > 0) {
   await page.waitForTimeout(Math.min(replay.waitForMs, 30000));
@@ -373,6 +431,8 @@ for (let i = 0; i < replay.actions.length; i += 1) {
   const step = \`Replay action #\${i + 1} (\${action.type})\`;
 
   try {
+    await syncReplayPage();
+
     switch (action.type) {
       case "wait":
         if (typeof action.milliseconds === "number") {
@@ -433,10 +493,14 @@ for (let i = 0; i < replay.actions.length; i += 1) {
         console.log(\`[firecrawl-replay] skipping unsupported action type: \${String(action.type)}\`);
         break;
     }
+
+    await syncReplayPage();
   } catch (error) {
     failReplay(step, error);
   }
 }
+
+await syncReplayPage();
 `;
 }
 
