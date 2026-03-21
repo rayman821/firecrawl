@@ -14,6 +14,17 @@ import {
   calculateScrapeCredits,
 } from "./scrape";
 import type { BillingMetadata } from "../services/billing/types";
+import {
+  generateCompletions,
+  GenerateCompletionsOptions,
+} from "../scraper/scrapeURL/transformers/llmExtract";
+import { CostTracking } from "../lib/cost-tracking";
+import { getModel } from "../lib/generic-ai";
+
+interface ExtractOptions {
+  prompt: string;
+  schema?: any;
+}
 
 interface SearchOptions {
   query: string;
@@ -27,6 +38,7 @@ interface SearchOptions {
   categories?: CategoryOption[];
   enterprise?: ("default" | "anon" | "zdr")[];
   scrapeOptions?: ScrapeOptions;
+  extract?: ExtractOptions;
   timeout: number;
 }
 
@@ -49,6 +61,8 @@ interface SearchExecuteResult {
   scrapeCredits: number;
   totalCredits: number;
   shouldScrape: boolean;
+  extract?: any;
+  extractWarning?: string;
 }
 
 export async function executeSearch(
@@ -56,7 +70,7 @@ export async function executeSearch(
   context: SearchContext,
   logger: Logger,
 ): Promise<SearchExecuteResult> {
-  const { query, limit, sources, categories, scrapeOptions } = options;
+  const { query, limit, sources, categories, scrapeOptions, extract } = options;
   const {
     teamId,
     origin,
@@ -137,10 +151,34 @@ export async function executeSearch(
     Math.ceil(totalResultsCount / 10) * creditsPerTenResults;
   let scrapeCredits = 0;
 
-  const shouldScrape =
-    scrapeOptions?.formats && scrapeOptions.formats.length > 0;
+  // When extract is requested but no scrape formats specified, we need markdown for LLM input
+  const needsMarkdownForExtract =
+    extract && (!scrapeOptions?.formats || scrapeOptions.formats.length === 0);
 
-  if (shouldScrape && scrapeOptions) {
+  const shouldScrape =
+    (scrapeOptions?.formats && scrapeOptions.formats.length > 0) ||
+    needsMarkdownForExtract;
+
+  if (shouldScrape) {
+    // If extract is requested but no scrape formats, use markdown format for content
+    const effectiveScrapeOptions: ScrapeOptions = needsMarkdownForExtract
+      ? {
+          ...(scrapeOptions ?? {
+            onlyMainContent: true,
+            onlyCleanContent: false,
+            waitFor: 0,
+            mobile: false,
+            removeBase64Images: true,
+            fastMode: false,
+            blockAds: true,
+            proxy: "auto" as const,
+            storeInCache: true,
+            __experimental_omce: false,
+            __experimental_engpicker: false,
+          }),
+          formats: [{ type: "markdown" as const }],
+        }
+      : scrapeOptions!;
     const itemsToScrape = getItemsToScrape(searchResponse, flags);
 
     if (itemsToScrape.length > 0) {
@@ -148,7 +186,7 @@ export async function executeSearch(
         teamId,
         origin,
         timeout: options.timeout,
-        scrapeOptions,
+        scrapeOptions: effectiveScrapeOptions,
         bypassBilling: bypassBilling ?? false,
         apiKeyId,
         zeroDataRetention,
@@ -173,6 +211,53 @@ export async function executeSearch(
     }
   }
 
+  // Consolidated extraction across all results
+  let extractResult: any = undefined;
+  let extractWarning: string | undefined = undefined;
+  if (extract) {
+    const allMarkdown = collectMarkdownFromResults(searchResponse);
+
+    if (allMarkdown.length > 0) {
+      try {
+        const costTracking = new CostTracking();
+        const generationOptions: GenerateCompletionsOptions = {
+          logger: logger.child({
+            method: "executeSearch/consolidatedExtract",
+          }),
+          options: {
+            prompt: extract.prompt,
+            schema: extract.schema,
+          },
+          markdown: allMarkdown,
+          model: getModel("gpt-4o-mini", "openai"),
+          retryModel: getModel("gpt-4.1", "openai"),
+          costTrackingOptions: {
+            costTracking,
+            metadata: {
+              module: "search",
+              method: "consolidatedExtract",
+            },
+          },
+          metadata: {
+            teamId,
+            functionId: "searchConsolidatedExtract",
+            scrapeId: requestId,
+          },
+        };
+
+        const completionResult = await generateCompletions(generationOptions);
+        extractResult = completionResult.extract;
+        extractWarning = completionResult.warning;
+      } catch (error) {
+        logger.error("Consolidated extract failed", { error });
+        extractWarning = `Consolidated extraction failed: ${error.message}`;
+      }
+    } else {
+      extractWarning =
+        "No content available for extraction. Ensure search results have markdown content by including scrapeOptions with formats.";
+    }
+  }
+
   return {
     response: searchResponse,
     totalResultsCount,
@@ -180,5 +265,37 @@ export async function executeSearch(
     scrapeCredits,
     totalCredits: searchCredits + scrapeCredits,
     shouldScrape: shouldScrape ?? false,
+    extract: extractResult,
+    extractWarning,
   };
+}
+
+/**
+ * Collect markdown content from all search results into a single combined string.
+ * Each result's markdown is prefixed with its source URL for context.
+ */
+function collectMarkdownFromResults(response: SearchV2Response): string {
+  const parts: string[] = [];
+
+  if (response.web) {
+    for (const item of response.web) {
+      if (item.markdown) {
+        parts.push(
+          `--- Source: ${item.url} (${item.title}) ---\n${item.markdown}`,
+        );
+      }
+    }
+  }
+
+  if (response.news) {
+    for (const item of response.news) {
+      if (item.markdown) {
+        parts.push(
+          `--- Source: ${item.url ?? "unknown"} (${item.title ?? ""}) ---\n${item.markdown}`,
+        );
+      }
+    }
+  }
+
+  return parts.join("\n\n");
 }
