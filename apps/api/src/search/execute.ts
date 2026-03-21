@@ -151,16 +151,18 @@ export async function executeSearch(
     Math.ceil(totalResultsCount / 10) * creditsPerTenResults;
   let scrapeCredits = 0;
 
-  // When extract is requested but no scrape formats specified, we need markdown for LLM input
-  const needsMarkdownForExtract =
-    extract && (!scrapeOptions?.formats || scrapeOptions.formats.length === 0);
+  // When extract is requested, ensure markdown is available for LLM input
+  const hasMarkdownFormat = scrapeOptions?.formats?.some(
+    f => f.type === "markdown",
+  );
+  const needsMarkdownForExtract = extract && !hasMarkdownFormat;
 
   const shouldScrape =
     (scrapeOptions?.formats && scrapeOptions.formats.length > 0) ||
     needsMarkdownForExtract;
 
   if (shouldScrape) {
-    // If extract is requested but no scrape formats, use markdown format for content
+    // Ensure markdown format is included when extract is requested
     const effectiveScrapeOptions: ScrapeOptions = needsMarkdownForExtract
       ? {
           ...(scrapeOptions ?? {
@@ -176,7 +178,10 @@ export async function executeSearch(
             __experimental_omce: false,
             __experimental_engpicker: false,
           }),
-          formats: [{ type: "markdown" as const }],
+          formats: [
+            ...(scrapeOptions?.formats ?? []),
+            { type: "markdown" as const },
+          ],
         }
       : scrapeOptions!;
     const itemsToScrape = getItemsToScrape(searchResponse, flags);
@@ -248,9 +253,10 @@ export async function executeSearch(
         const completionResult = await generateCompletions(generationOptions);
         extractResult = completionResult.extract;
         extractWarning = completionResult.warning;
-      } catch (error) {
+      } catch (error: unknown) {
         logger.error("Consolidated extract failed", { error });
-        extractWarning = `Consolidated extraction failed: ${error.message}`;
+        const message = error instanceof Error ? error.message : String(error);
+        extractWarning = `Consolidated extraction failed: ${message}`;
       }
     } else {
       extractWarning =
