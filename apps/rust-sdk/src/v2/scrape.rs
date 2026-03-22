@@ -334,6 +334,14 @@ impl Client {
         job_id: impl AsRef<str>,
         options: ScrapeExecuteOptions,
     ) -> Result<ScrapeExecuteResponse, FirecrawlError> {
+        let has_code = options.code.as_ref().is_some_and(|c| !c.trim().is_empty());
+        let has_prompt = options.prompt.as_ref().is_some_and(|p| !p.trim().is_empty());
+        if !has_code && !has_prompt {
+            return Err(FirecrawlError::Missuse(
+                "Either 'code' or 'prompt' must be provided".into(),
+            ));
+        }
+
         let mut body = options;
         if body.language.is_none() {
             body.language = Some(ScrapeExecuteLanguage::Node);

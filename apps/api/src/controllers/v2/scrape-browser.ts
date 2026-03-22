@@ -561,8 +561,8 @@ async function createSessionForScrape(
         "POST",
         `/browsers/${svcResponse.sessionId}/exec`,
         {
-          code: `agent-browser eval "window.location.href = '${replayContext.targetUrl.replace(/'/g, "\\'")}'" && agent-browser wait --load networkidle`,
-          language: "bash",
+          code: `await page.goto(${JSON.stringify(replayContext.targetUrl)}, { waitUntil: "networkidle0" });`,
+          language: "node",
           timeout: 30,
           origin: "scrape_replay_sync",
         },
