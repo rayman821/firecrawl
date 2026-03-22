@@ -2,7 +2,7 @@ import { HttpClient } from "./utils/httpClient";
 import {
   scrape,
   interact as interactMethod,
-  stopInteractiveBrowser as stopInteractiveBrowserMethod,
+  stopInteraction as stopInteractionMethod,
 } from "./methods/scrape";
 import { search } from "./methods/search";
 import { map as mapMethod } from "./methods/map";
@@ -149,11 +149,11 @@ export class FirecrawlClient {
     return interactMethod(this.http, jobId, args);
   }
   /**
-   * Stop the interactive browser session associated with a scrape job.
+   * Stop the interaction session associated with a scrape job.
    * @param jobId Scrape job id.
    */
-  async stopInteractiveBrowser(jobId: string): Promise<ScrapeBrowserDeleteResponse> {
-    return stopInteractiveBrowserMethod(this.http, jobId);
+  async stopInteraction(jobId: string): Promise<ScrapeBrowserDeleteResponse> {
+    return stopInteractionMethod(this.http, jobId);
   }
   /**
    * @deprecated Use interact().
@@ -165,10 +165,16 @@ export class FirecrawlClient {
     return this.interact(jobId, args);
   }
   /**
-   * @deprecated Use stopInteractiveBrowser().
+   * @deprecated Use stopInteraction().
+   */
+  async stopInteractiveBrowser(jobId: string): Promise<ScrapeBrowserDeleteResponse> {
+    return this.stopInteraction(jobId);
+  }
+  /**
+   * @deprecated Use stopInteraction().
    */
   async deleteScrapeBrowser(jobId: string): Promise<ScrapeBrowserDeleteResponse> {
-    return this.stopInteractiveBrowser(jobId);
+    return this.stopInteraction(jobId);
   }
 
   // Search

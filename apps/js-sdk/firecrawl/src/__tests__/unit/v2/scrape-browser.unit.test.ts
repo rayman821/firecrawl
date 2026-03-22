@@ -1,5 +1,5 @@
 import { describe, test, expect, jest } from "@jest/globals";
-import { interact, stopInteractiveBrowser } from "../../../v2/methods/scrape";
+import { interact, stopInteraction } from "../../../v2/methods/scrape";
 import { SdkError } from "../../../v2/types";
 
 describe("JS SDK v2 scrape-browser methods", () => {
@@ -72,7 +72,7 @@ describe("JS SDK v2 scrape-browser methods", () => {
     ).rejects.toBeInstanceOf(SdkError);
   });
 
-  test("stopInteractiveBrowser calls delete endpoint", async () => {
+  test("stopInteraction calls delete endpoint", async () => {
     const del = jest.fn(async () => ({
       status: 200,
       data: {
@@ -81,13 +81,13 @@ describe("JS SDK v2 scrape-browser methods", () => {
     }));
 
     const http = { delete: del } as any;
-    const response = await stopInteractiveBrowser(http, "job-123");
+    const response = await stopInteraction(http, "job-123");
 
     expect(del).toHaveBeenCalledWith("/v2/scrape/job-123/interact");
     expect(response.success).toBe(true);
   });
 
-  test("stopInteractiveBrowser throws on non-200 response", async () => {
+  test("stopInteraction throws on non-200 response", async () => {
     const del = jest.fn(async () => ({
       status: 404,
       data: {
@@ -97,7 +97,7 @@ describe("JS SDK v2 scrape-browser methods", () => {
     }));
 
     const http = { delete: del } as any;
-    await expect(stopInteractiveBrowser(http, "job-123")).rejects.toBeInstanceOf(
+    await expect(stopInteraction(http, "job-123")).rejects.toBeInstanceOf(
       SdkError
     );
   });

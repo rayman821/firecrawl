@@ -129,7 +129,7 @@ const run = await app.interact(scrapeJobId, {
 });
 console.log(run.stdout);
 
-await app.stopInteractiveBrowser(scrapeJobId);
+await app.stopInteraction(scrapeJobId);
 ```
 
 ### Crawl a website with real‑time updates

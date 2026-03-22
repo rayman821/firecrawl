@@ -135,12 +135,12 @@ def interact(
     return BrowserExecuteResponse(**normalized)
 
 
-def stop_interactive_browser(
+def stop_interaction(
     client: HttpClient,
     job_id: str,
 ) -> BrowserDeleteResponse:
     """
-    Stop the interactive browser session for a scrape job.
+    Stop the interaction session for a scrape job.
 
     Args:
         client: HTTP client instance
@@ -154,7 +154,7 @@ def stop_interactive_browser(
 
     response = client.delete(f"/v2/scrape/{job_id}/interact")
     if not response.ok:
-        handle_response_error(response, "stop interactive browser session")
+        handle_response_error(response, "stop interaction")
 
     payload = response.json()
     normalized = dict(payload)
@@ -164,6 +164,14 @@ def stop_interactive_browser(
         normalized["credits_billed"] = normalized["creditsBilled"]
 
     return BrowserDeleteResponse(**normalized)
+
+
+def stop_interactive_browser(
+    client: HttpClient,
+    job_id: str,
+) -> BrowserDeleteResponse:
+    """Deprecated alias for stop_interaction()."""
+    return stop_interaction(client, job_id)
 
 
 def scrape_execute(
@@ -192,5 +200,5 @@ def delete_scrape_browser(
     client: HttpClient,
     job_id: str,
 ) -> BrowserDeleteResponse:
-    """Deprecated alias for stop_interactive_browser()."""
-    return stop_interactive_browser(client, job_id)
+    """Deprecated alias for stop_interaction()."""
+    return stop_interaction(client, job_id)

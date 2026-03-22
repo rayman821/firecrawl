@@ -84,7 +84,7 @@ async def interact(
     return BrowserExecuteResponse(**normalized)
 
 
-async def stop_interactive_browser(
+async def stop_interaction(
     client: AsyncHttpClient,
     job_id: str,
 ) -> BrowserDeleteResponse:
@@ -93,7 +93,7 @@ async def stop_interactive_browser(
 
     response = await client.delete(f"/v2/scrape/{job_id}/interact")
     if response.status_code >= 400:
-        handle_response_error(response, "stop interactive browser session")
+        handle_response_error(response, "stop interaction")
 
     body = response.json()
     normalized = dict(body)
@@ -103,6 +103,14 @@ async def stop_interactive_browser(
         normalized["credits_billed"] = normalized["creditsBilled"]
 
     return BrowserDeleteResponse(**normalized)
+
+
+async def stop_interactive_browser(
+    client: AsyncHttpClient,
+    job_id: str,
+) -> BrowserDeleteResponse:
+    """Deprecated alias for stop_interaction()."""
+    return await stop_interaction(client, job_id)
 
 
 async def scrape_execute(
@@ -131,6 +139,6 @@ async def delete_scrape_browser(
     client: AsyncHttpClient,
     job_id: str,
 ) -> BrowserDeleteResponse:
-    """Deprecated alias for stop_interactive_browser()."""
-    return await stop_interactive_browser(client, job_id)
+    """Deprecated alias for stop_interaction()."""
+    return await stop_interaction(client, job_id)
 

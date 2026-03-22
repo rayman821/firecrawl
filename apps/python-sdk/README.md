@@ -154,7 +154,7 @@ run = firecrawl.interact(
 )
 print(run.stdout)
 
-firecrawl.stop_interactive_browser(scrape_job_id)
+firecrawl.stop_interaction(scrape_job_id)
 ```
 
 {/* ### Extracting Structured Data from Websites

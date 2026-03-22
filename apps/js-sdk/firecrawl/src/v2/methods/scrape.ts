@@ -64,7 +64,7 @@ export async function interact(
   }
 }
 
-export async function stopInteractiveBrowser(
+export async function stopInteraction(
   http: HttpClient,
   jobId: string
 ): Promise<ScrapeBrowserDeleteResponse> {
@@ -76,10 +76,10 @@ export async function stopInteractiveBrowser(
     const res = await http.delete<ScrapeBrowserDeleteResponse>(
       `/v2/scrape/${jobId}/interact`
     );
-    if (res.status !== 200) throwForBadResponse(res, "stop interactive browser session");
+    if (res.status !== 200) throwForBadResponse(res, "stop interaction");
     return res.data;
   } catch (err: any) {
-    if (err?.isAxiosError) return normalizeAxiosError(err, "stop interactive browser session");
+    if (err?.isAxiosError) return normalizeAxiosError(err, "stop interaction");
     throw err;
   }
 }
@@ -93,11 +93,19 @@ export async function scrapeExecute(
   return interact(http, jobId, args);
 }
 
-/** @deprecated Use stopInteractiveBrowser(). */
+/** @deprecated Use stopInteraction(). */
+export async function stopInteractiveBrowser(
+  http: HttpClient,
+  jobId: string
+): Promise<ScrapeBrowserDeleteResponse> {
+  return stopInteraction(http, jobId);
+}
+
+/** @deprecated Use stopInteraction(). */
 export async function deleteScrapeBrowser(
   http: HttpClient,
   jobId: string
 ): Promise<ScrapeBrowserDeleteResponse> {
-  return stopInteractiveBrowser(http, jobId);
+  return stopInteraction(http, jobId);
 }
 

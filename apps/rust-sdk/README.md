@@ -164,7 +164,7 @@ let run = client
     .await?;
 
 println!("{:?}", run.stdout);
-client.stop_interactive_browser(job_id).await?;
+client.stop_interaction(job_id).await?;
 ```
 
 ## Error Handling

@@ -356,7 +356,7 @@ impl Client {
         self.handle_response(response, "scrape interact").await
     }
 
-    /// Stops the interactive browser session associated with a scrape job.
+    /// Stops the interaction session associated with a scrape job.
     ///
     /// # Arguments
     ///
@@ -365,7 +365,7 @@ impl Client {
     /// # Returns
     ///
     /// A `ScrapeBrowserDeleteResponse` indicating stop status.
-    pub async fn stop_interactive_browser(
+    pub async fn stop_interaction(
         &self,
         job_id: impl AsRef<str>,
     ) -> Result<ScrapeBrowserDeleteResponse, FirecrawlError> {
@@ -377,12 +377,12 @@ impl Client {
             .await
             .map_err(|e| {
                 FirecrawlError::HttpError(
-                    format!("Stopping scrape interactive browser for {}", job_id.as_ref()),
+                    format!("Stopping interaction for {}", job_id.as_ref()),
                     e,
                 )
             })?;
 
-        self.handle_response(response, "stop scrape interactive browser")
+        self.handle_response(response, "stop interaction")
             .await
     }
 
@@ -396,13 +396,22 @@ impl Client {
         self.interact(job_id, options).await
     }
 
-    /// Deprecated alias for [`Client::stop_interactive_browser`].
-    #[deprecated(note = "Use stop_interactive_browser() instead")]
+    /// Deprecated alias for [`Client::stop_interaction`].
+    #[deprecated(note = "Use stop_interaction() instead")]
+    pub async fn stop_interactive_browser(
+        &self,
+        job_id: impl AsRef<str>,
+    ) -> Result<ScrapeBrowserDeleteResponse, FirecrawlError> {
+        self.stop_interaction(job_id).await
+    }
+
+    /// Deprecated alias for [`Client::stop_interaction`].
+    #[deprecated(note = "Use stop_interaction() instead")]
     pub async fn delete_scrape_browser(
         &self,
         job_id: impl AsRef<str>,
     ) -> Result<ScrapeBrowserDeleteResponse, FirecrawlError> {
-        self.stop_interactive_browser(job_id).await
+        self.stop_interaction(job_id).await
     }
 }
 
@@ -640,7 +649,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_stop_interactive_browser_with_mock() {
+    async fn test_stop_interaction_with_mock() {
         let mut server = mockito::Server::new_async().await;
 
         let mock = server
@@ -658,7 +667,7 @@ mod tests {
             .create();
 
         let client = Client::new_selfhosted(server.url(), Some("test_key")).unwrap();
-        let response = client.stop_interactive_browser("job-123").await.unwrap();
+        let response = client.stop_interaction("job-123").await.unwrap();
 
         assert!(response.success);
         assert_eq!(response.session_duration_ms, Some(1200));

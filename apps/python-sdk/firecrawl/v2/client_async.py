@@ -111,11 +111,15 @@ class AsyncFirecrawlClient:
             origin=origin,
         )
 
-    async def stop_interactive_browser(self, job_id: str):
-        return await async_scrape.stop_interactive_browser(
+    async def stop_interaction(self, job_id: str):
+        return await async_scrape.stop_interaction(
             self.async_http_client,
             job_id,
         )
+
+    async def stop_interactive_browser(self, job_id: str):
+        """Deprecated alias for stop_interaction()."""
+        return await self.stop_interaction(job_id)
 
     async def scrape_execute(
         self,
@@ -138,8 +142,8 @@ class AsyncFirecrawlClient:
         )
 
     async def delete_scrape_browser(self, job_id: str):
-        """Deprecated alias for stop_interactive_browser()."""
-        return await self.stop_interactive_browser(job_id)
+        """Deprecated alias for stop_interaction()."""
+        return await self.stop_interaction(job_id)
 
     # Search
     async def search(

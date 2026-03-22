@@ -3,7 +3,7 @@ from firecrawl.v2.types import ScrapeOptions, Viewport, ScreenshotAction
 from firecrawl.v2.methods.scrape import (
     _prepare_scrape_request,
     interact,
-    stop_interactive_browser,
+    stop_interaction,
 )
 
 
@@ -228,7 +228,7 @@ class TestScrapeRequestPreparation:
         with pytest.raises(Exception, match="Replay context is unavailable"):
             interact(client, "job-123", "console.log('ok')")
 
-    def test_stop_interactive_browser_request_and_response_normalization(self):
+    def test_stop_interaction_request_and_response_normalization(self):
         client = _FakeClient(
             post_response=_FakeResponse(200, {"success": True}),
             delete_response=_FakeResponse(
@@ -240,7 +240,7 @@ class TestScrapeRequestPreparation:
                 },
             ),
         )
-        response = stop_interactive_browser(client, "job-123")
+        response = stop_interaction(client, "job-123")
 
         assert client.last_delete == "/v2/scrape/job-123/interact"
         assert response.success is True

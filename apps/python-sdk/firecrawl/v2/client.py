@@ -221,9 +221,9 @@ class FirecrawlClient:
             origin=origin,
         )
 
-    def stop_interactive_browser(self, job_id: str):
+    def stop_interaction(self, job_id: str):
         """
-        Stop the interactive browser session associated with a scrape job.
+        Stop the interaction session associated with a scrape job.
 
         Args:
             job_id: Scrape job ID
@@ -231,7 +231,11 @@ class FirecrawlClient:
         Returns:
             BrowserDeleteResponse
         """
-        return scrape_module.stop_interactive_browser(self.http_client, job_id)
+        return scrape_module.stop_interaction(self.http_client, job_id)
+
+    def stop_interactive_browser(self, job_id: str):
+        """Deprecated alias for stop_interaction()."""
+        return self.stop_interaction(job_id)
 
     def scrape_execute(
         self,
@@ -254,8 +258,8 @@ class FirecrawlClient:
         )
 
     def delete_scrape_browser(self, job_id: str):
-        """Deprecated alias for stop_interactive_browser()."""
-        return self.stop_interactive_browser(job_id)
+        """Deprecated alias for stop_interaction()."""
+        return self.stop_interaction(job_id)
 
     def search(
         self,
