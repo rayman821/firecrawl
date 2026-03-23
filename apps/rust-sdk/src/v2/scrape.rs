@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use super::client::Client;
 use super::types::{
     Action, AttributeSelector, ChangeTrackingOptions, Document, Format, JsonOptions,
-    LocationConfig, ProxyType, ScreenshotOptions,
+    LocationConfig, ProfileConfig, ProxyType, ScreenshotOptions,
 };
 use crate::FirecrawlError;
 
@@ -72,6 +72,9 @@ pub struct ScrapeOptions {
 
     /// Store the result in cache for future requests.
     pub store_in_cache: Option<bool>,
+
+    /// Persistent browser profile for maintaining state across scrapes.
+    pub profile: Option<ProfileConfig>,
 
     /// Integration identifier for tracking.
     pub integration: Option<String>,

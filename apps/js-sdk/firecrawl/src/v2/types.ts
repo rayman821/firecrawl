@@ -163,6 +163,10 @@ export interface ScrapeOptions {
   maxAge?: number;
   minAge?: number;
   storeInCache?: boolean;
+  profile?: {
+    name: string;
+    saveChanges?: boolean;
+  };
   integration?: string;
   origin?: string;
 }
