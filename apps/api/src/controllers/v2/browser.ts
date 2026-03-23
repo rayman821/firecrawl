@@ -464,6 +464,7 @@ export async function browserExecuteController(
   enqueueBrowserSessionActivity({
     team_id: req.auth.team_id,
     session_id: id,
+    source: "browser",
     language,
     timeout,
     exit_code: execResult.exitCode ?? null,

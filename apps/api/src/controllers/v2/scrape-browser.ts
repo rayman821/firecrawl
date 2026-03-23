@@ -69,6 +69,7 @@ const browserExecuteRequestSchema = z
     language: z.enum(["python", "node", "bash"]).default("node"),
     timeout: z.number().min(1).max(300).default(30),
     origin: z.string().optional(),
+    integration: integrationSchema.optional().transform(val => val || null),
   })
   .refine(data => data.code || data.prompt, {
     message: "Either 'code' or 'prompt' must be provided.",
@@ -214,6 +215,7 @@ export async function scrapeInteractController(
     enqueueBrowserSessionActivity({
       team_id: req.auth.team_id,
       session_id: session.id,
+      source: "interact",
       language: "bash",
       timeout,
       exit_code: execResult.exitCode ?? null,
@@ -241,6 +243,7 @@ export async function scrapeInteractController(
     enqueueBrowserSessionActivity({
       team_id: req.auth.team_id,
       session_id: session.id,
+      source: "interact",
       language,
       timeout,
       exit_code: execResult.exitCode ?? null,
@@ -348,9 +351,9 @@ export async function scrapeStopInteractiveBrowserController(
     req.acuc?.sub_id ?? undefined,
     creditsBilled,
     req.acuc?.api_key_id ?? null,
-    { endpoint: "browser", jobId: session.id },
+    { endpoint: "interact", jobId: session.id },
   ).catch(error => {
-    logger.error("Failed to bill team for browser session", {
+    logger.error("Failed to bill team for interact session", {
       error,
       creditsBilled,
       durationMs,
@@ -383,8 +386,9 @@ async function createSessionForScrape(
   | { status: number; body: { success: false; error: string }; error: true }
 > {
   const sessionId = uuidv7();
-  const { ttl, activityTtl, streamWebView, profile, integration } =
+  const { ttl, activityTtl, streamWebView, profile } =
     browserCreateRequestSchema.parse({});
+  const integration = req.body?.integration ?? null;
 
   if (!config.BROWSER_SERVICE_URL) {
     return {
@@ -591,11 +595,11 @@ async function createSessionForScrape(
   try {
     await logRequest({
       id: sessionId,
-      kind: "browser",
+      kind: "interact",
       api_version: "v2",
       team_id: req.auth.team_id,
-      target_hint: "Browser session",
-      origin: "api",
+      target_hint: "Interact session",
+      origin: req.body?.origin ?? "api",
       integration: integration ?? null,
       zeroDataRetention: false,
       api_key_id: req.acuc?.api_key_id ?? null,
