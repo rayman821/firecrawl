@@ -11,11 +11,14 @@ import {
   updateBrowserSessionCreditsUsed,
   updateBrowserSessionScrapeId,
   claimBrowserSessionDestroyed,
-  getActiveBrowserSessionCount,
   invalidateActiveBrowserSessionCount,
-  MAX_ACTIVE_BROWSER_SESSIONS_PER_TEAM,
   getBrowserSessionFromScrape,
 } from "../../lib/browser-sessions";
+import {
+  getConcurrencyLimitActiveJobsCount,
+  pushConcurrencyLimitActiveJob,
+  removeConcurrencyLimitActiveJob,
+} from "../../lib/concurrency-limit";
 import {
   browserServiceRequest,
   BrowserServiceError,
@@ -347,6 +350,7 @@ export async function scrapeStopInteractiveBrowserController(
   const claimed = await claimBrowserSessionDestroyed(session.id);
 
   invalidateActiveBrowserSessionCount(session.team_id).catch(() => {});
+  removeConcurrencyLimitActiveJob(session.team_id, session.id).catch(() => {});
 
   if (!claimed) {
     logger.info("Session already destroyed by another path, skipping billing", {
@@ -447,14 +451,17 @@ async function createSessionForScrape(
     };
   }
 
-  // Active session limit
-  const activeCount = await getActiveBrowserSessionCount(req.auth.team_id);
-  if (activeCount >= MAX_ACTIVE_BROWSER_SESSIONS_PER_TEAM) {
+  // Active session limit — uses the same concurrency pool as scrape/crawl
+  const concurrencyLimit = req.acuc?.concurrency ?? 2;
+  const activeCount = await getConcurrencyLimitActiveJobsCount(
+    req.auth.team_id,
+  );
+  if (activeCount >= concurrencyLimit) {
     return {
       status: 429,
       body: {
         success: false,
-        error: `You have reached the maximum number of active browser sessions (${MAX_ACTIVE_BROWSER_SESSIONS_PER_TEAM}). Please destroy existing sessions before creating new ones.`,
+        error: `You have reached the maximum number of concurrent jobs (${concurrencyLimit}). Please wait for existing jobs to complete or destroy browser sessions before creating new ones.`,
       },
       error: true,
     };
@@ -648,6 +655,14 @@ async function createSessionForScrape(
     });
 
     invalidateActiveBrowserSessionCount(req.auth.team_id).catch(() => {});
+
+    // Register in the shared concurrency limiter so this session counts
+    // against the team's concurrent job limit while it's active.
+    pushConcurrencyLimitActiveJob(
+      req.auth.team_id,
+      sessionId,
+      ttl * 1000,
+    ).catch(() => {});
 
     return { session };
   } catch (err) {
