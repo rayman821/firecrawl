@@ -15,6 +15,9 @@ import {
   invalidateActiveBrowserSessionCount,
   MAX_ACTIVE_BROWSER_SESSIONS_PER_TEAM,
   getBrowserSessionFromScrape,
+  markBrowserSessionUsedPrompt,
+  didBrowserSessionUsePrompt,
+  clearBrowserSessionPromptFlag,
 } from "../../lib/browser-sessions";
 import {
   browserServiceRequest,
@@ -44,11 +47,15 @@ import { supabaseGetScrapeById } from "../../lib/supabase-jobs";
 // Constants & schemas
 // ---------------------------------------------------------------------------
 
-const BROWSER_CREDITS_PER_HOUR = 120;
+export const BROWSER_CREDITS_PER_HOUR = 120;
+export const INTERACT_CREDITS_PER_HOUR = 420;
 
-function calculateBrowserSessionCredits(durationMs: number): number {
+export function calculateBrowserSessionCredits(
+  durationMs: number,
+  creditsPerHour = BROWSER_CREDITS_PER_HOUR,
+): number {
   const hours = durationMs / 3_600_000;
-  return Math.max(2, Math.ceil(hours * BROWSER_CREDITS_PER_HOUR));
+  return Math.max(2, Math.ceil(hours * creditsPerHour));
 }
 
 const browserCreateRequestSchema = z.object({
@@ -218,6 +225,8 @@ export async function scrapeInteractController(
   if (prompt && !rawCode) {
     logger.info("Starting agent loop from prompt", { prompt, timeout });
 
+    markBrowserSessionUsedPrompt(session.id).catch(() => {});
+
     try {
       execResult = await executePromptViaBrowserAgent(
         prompt,
@@ -360,7 +369,14 @@ export async function scrapeStopInteractiveBrowserController(
     sessionDurationMs && sessionDurationMs > 0
       ? sessionDurationMs
       : wallClockMs;
-  const creditsBilled = calculateBrowserSessionCredits(durationMs);
+
+  const usedPrompt = await didBrowserSessionUsePrompt(session.id);
+  const rate = usedPrompt
+    ? INTERACT_CREDITS_PER_HOUR
+    : BROWSER_CREDITS_PER_HOUR;
+  const creditsBilled = calculateBrowserSessionCredits(durationMs, rate);
+
+  clearBrowserSessionPromptFlag(session.id).catch(() => {});
 
   updateBrowserSessionCreditsUsed(session.id, creditsBilled).catch(error => {
     logger.error("Failed to update credits_used on browser session", {
@@ -387,6 +403,8 @@ export async function scrapeStopInteractiveBrowserController(
   logger.info("Browser session destroyed", {
     sessionDurationMs: durationMs,
     creditsBilled,
+    usedPrompt,
+    rate,
   });
 
   return res.status(200).json({ success: true });
@@ -434,7 +452,7 @@ async function createSessionForScrape(
     activityTtl,
   });
 
-  // Credit check
+  // Credit check (uses base rate — actual billing may be higher if prompts are used)
   const estimatedCredits = calculateBrowserSessionCredits(ttl * 1000);
   if (req.acuc && req.acuc.remaining_credits < estimatedCredits) {
     return {

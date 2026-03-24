@@ -16,6 +16,8 @@ import {
   getActiveBrowserSessionCount,
   invalidateActiveBrowserSessionCount,
   MAX_ACTIVE_BROWSER_SESSIONS_PER_TEAM,
+  didBrowserSessionUsePrompt,
+  clearBrowserSessionPromptFlag,
 } from "../../lib/browser-sessions";
 import { RequestWithAuth } from "./types";
 import { billTeam } from "../../services/billing/credit_billing";
@@ -24,14 +26,18 @@ import { logRequest } from "../../services/logging/log_job";
 import { integrationSchema } from "../../utils/integration";
 
 const BROWSER_CREDITS_PER_HOUR = 120;
+const INTERACT_CREDITS_PER_HOUR = 420;
 
 /**
  * Calculate credits to bill for a browser session based on its duration.
  * Prorates to the millisecond. Minimum charge is 2 credits.
  */
-function calculateBrowserSessionCredits(durationMs: number): number {
+function calculateBrowserSessionCredits(
+  durationMs: number,
+  creditsPerHour = BROWSER_CREDITS_PER_HOUR,
+): number {
   const hours = durationMs / 3_600_000;
-  return Math.max(2, Math.ceil(hours * BROWSER_CREDITS_PER_HOUR));
+  return Math.max(2, Math.ceil(hours * creditsPerHour));
 }
 
 // ---------------------------------------------------------------------------
@@ -558,7 +564,14 @@ export async function browserDeleteController(
     sessionDurationMs && sessionDurationMs > 0
       ? sessionDurationMs
       : wallClockMs;
-  const creditsBilled = calculateBrowserSessionCredits(durationMs);
+
+  const usedPrompt = await didBrowserSessionUsePrompt(session.id);
+  const rate = usedPrompt
+    ? INTERACT_CREDITS_PER_HOUR
+    : BROWSER_CREDITS_PER_HOUR;
+  const creditsBilled = calculateBrowserSessionCredits(durationMs, rate);
+
+  clearBrowserSessionPromptFlag(session.id).catch(() => {});
 
   updateBrowserSessionCreditsUsed(session.id, creditsBilled).catch(error => {
     logger.error("Failed to update credits_used on browser session", {
@@ -573,7 +586,7 @@ export async function browserDeleteController(
     req.acuc?.sub_id ?? undefined,
     creditsBilled,
     req.acuc?.api_key_id ?? null,
-    { endpoint: "browser", jobId: session.id },
+    { endpoint: usedPrompt ? "interact" : "browser", jobId: session.id },
   ).catch(error => {
     logger.error("Failed to bill team for browser session", {
       error,
@@ -682,7 +695,14 @@ export async function browserWebhookDestroyedController(
   }
 
   const durationMs = Date.now() - new Date(session.created_at).getTime();
-  const creditsBilled = calculateBrowserSessionCredits(durationMs);
+
+  const usedPrompt = await didBrowserSessionUsePrompt(session.id);
+  const rate = usedPrompt
+    ? INTERACT_CREDITS_PER_HOUR
+    : BROWSER_CREDITS_PER_HOUR;
+  const creditsBilled = calculateBrowserSessionCredits(durationMs, rate);
+
+  clearBrowserSessionPromptFlag(session.id).catch(() => {});
 
   updateBrowserSessionCreditsUsed(session.id, creditsBilled).catch(error => {
     logger.error(
@@ -700,7 +720,7 @@ export async function browserWebhookDestroyedController(
     undefined, // subscription_id — billTeam will look it up
     creditsBilled,
     null, // api_key_id not available in webhook context
-    { endpoint: "browser", jobId: session.id },
+    { endpoint: usedPrompt ? "interact" : "browser", jobId: session.id },
   ).catch(error => {
     logger.error("Failed to bill team for browser session via webhook", {
       error,
@@ -716,6 +736,8 @@ export async function browserWebhookDestroyedController(
     browserId,
     durationMs,
     creditsBilled,
+    usedPrompt,
+    rate,
   });
 
   return res.status(200).json({ ok: true });
