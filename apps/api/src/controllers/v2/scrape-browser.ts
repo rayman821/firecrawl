@@ -353,7 +353,13 @@ export async function scrapeStopInteractiveBrowserController(
   const claimed = await claimBrowserSessionDestroyed(session.id);
 
   invalidateActiveBrowserSessionCount(session.team_id).catch(() => {});
-  removeConcurrencyLimitActiveJob(session.team_id, session.id).catch(() => {});
+  removeConcurrencyLimitActiveJob(session.team_id, session.id).catch(error => {
+    logger.error("Failed to remove concurrency limiter entry for browser session", {
+      error,
+      sessionId: session.id,
+      teamId: session.team_id,
+    });
+  });
 
   if (!claimed) {
     logger.info("Session already destroyed by another path, skipping billing", {
