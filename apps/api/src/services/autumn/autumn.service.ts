@@ -123,12 +123,18 @@ export class BoundedSet<V> extends Set<V> {
 }
 
 /**
- * How long to suppress all Autumn calls after a failure (ms).
+ * How long to suppress all Autumn calls once the circuit breaker trips (ms).
  * During this window every public method returns its "unavailable" value
  * (null / false) immediately, so user requests are not blocked by a dead
  * billing API.
  */
 export const CIRCUIT_BREAKER_COOLDOWN_MS = 30_000;
+
+/** Number of failures within the observation window required to trip the breaker. */
+export const CIRCUIT_BREAKER_THRESHOLD = 5;
+
+/** Sliding window (ms) in which failures are counted toward the threshold. */
+const CIRCUIT_BREAKER_WINDOW_MS = 60_000;
 
 /**
  * Wraps Autumn customer/entity provisioning and usage tracking for team credit billing.
@@ -138,19 +144,34 @@ export class AutumnService {
   private ensuredOrgs = new BoundedSet<string>(50_000);
   private ensuredTeams = new BoundedSet<string>(50_000);
 
-  /** Timestamp (ms) of the last Autumn HTTP failure, or 0 if healthy. */
-  private lastFailureTs = 0;
+  /** Timestamps of recent Autumn HTTP failures (inside the observation window). */
+  private recentFailures: number[] = [];
+
+  /** When the circuit was tripped (ms), or 0 if closed. */
+  private circuitOpenedAt = 0;
 
   /** Record an Autumn HTTP failure for circuit-breaker purposes. */
   private recordFailure(): void {
-    this.lastFailureTs = Date.now();
+    const now = Date.now();
+    this.recentFailures.push(now);
+    // Evict stale entries outside the window.
+    const cutoff = now - CIRCUIT_BREAKER_WINDOW_MS;
+    this.recentFailures = this.recentFailures.filter(ts => ts > cutoff);
+
+    if (this.recentFailures.length >= CIRCUIT_BREAKER_THRESHOLD) {
+      this.circuitOpenedAt = now;
+      this.recentFailures = [];
+      logger.error(
+        `Autumn circuit breaker tripped after ${CIRCUIT_BREAKER_THRESHOLD} failures — suppressing calls for ${CIRCUIT_BREAKER_COOLDOWN_MS / 1000}s`,
+      );
+    }
   }
 
   /** Returns true when the circuit breaker is open (Autumn calls should be skipped). */
   private isCircuitOpen(): boolean {
     return (
-      this.lastFailureTs > 0 &&
-      Date.now() - this.lastFailureTs < CIRCUIT_BREAKER_COOLDOWN_MS
+      this.circuitOpenedAt > 0 &&
+      Date.now() - this.circuitOpenedAt < CIRCUIT_BREAKER_COOLDOWN_MS
     );
   }
 
