@@ -123,12 +123,36 @@ export class BoundedSet<V> extends Set<V> {
 }
 
 /**
+ * How long to suppress all Autumn calls after a failure (ms).
+ * During this window every public method returns its "unavailable" value
+ * (null / false) immediately, so user requests are not blocked by a dead
+ * billing API.
+ */
+export const CIRCUIT_BREAKER_COOLDOWN_MS = 30_000;
+
+/**
  * Wraps Autumn customer/entity provisioning and usage tracking for team credit billing.
  */
 export class AutumnService {
   private customerOrgCache = new BoundedMap<string, string>(50_000);
   private ensuredOrgs = new BoundedSet<string>(50_000);
   private ensuredTeams = new BoundedSet<string>(50_000);
+
+  /** Timestamp (ms) of the last Autumn HTTP failure, or 0 if healthy. */
+  private lastFailureTs = 0;
+
+  /** Record an Autumn HTTP failure for circuit-breaker purposes. */
+  private recordFailure(): void {
+    this.lastFailureTs = Date.now();
+  }
+
+  /** Returns true when the circuit breaker is open (Autumn calls should be skipped). */
+  private isCircuitOpen(): boolean {
+    return (
+      this.lastFailureTs > 0 &&
+      Date.now() - this.lastFailureTs < CIRCUIT_BREAKER_COOLDOWN_MS
+    );
+  }
 
   private isPreviewTeam(teamId: string): boolean {
     return teamId === "preview" || teamId.startsWith("preview_");
@@ -175,6 +199,7 @@ export class AutumnService {
       logger.info("Autumn getOrCreateCustomer succeeded", { customerId });
       return customer;
     } catch (error) {
+      this.recordFailure();
       logger.error(
         "Autumn getOrCreateCustomer failed — billing API may be unavailable",
         { customerId, error },
@@ -196,6 +221,7 @@ export class AutumnService {
       if (status === 404) {
         return null;
       }
+      this.recordFailure();
       logger.error("Autumn getEntity failed — billing API may be unavailable", {
         customerId,
         entityId,
@@ -232,6 +258,7 @@ export class AutumnService {
         // Entity already exists — treat as success for provisioning purposes.
         return { ok: false, conflict: true };
       }
+      this.recordFailure();
       logger.error(
         "Autumn createEntity failed — billing API may be unavailable",
         {
@@ -270,6 +297,7 @@ export class AutumnService {
       });
       return true;
     } catch (error) {
+      this.recordFailure();
       logger.error("Autumn track failed — billing API may be unavailable", {
         customerId,
         entityId,
@@ -315,6 +343,7 @@ export class AutumnService {
     if (this.isPreviewTeam(teamId)) return;
     // Fast path: team is already fully provisioned.
     if (this.ensuredTeams.has(teamId)) return;
+    if (this.isCircuitOpen()) return;
 
     try {
       const resolvedOrgId = orgId ?? (await this.lookupOrgIdForTeam(teamId));
@@ -344,6 +373,7 @@ export class AutumnService {
 
       this.ensuredTeams.add(teamId);
     } catch (error) {
+      this.recordFailure();
       logger.error(
         "Autumn ensureTeamProvisioned failed — billing API may be unavailable",
         { teamId, error },
@@ -390,6 +420,7 @@ export class AutumnService {
     if (!autumnClient || this.isPreviewTeam(teamId)) {
       return null;
     }
+    if (this.isCircuitOpen()) return null;
 
     try {
       const orgId = await this.resolveOrgId(teamId);
@@ -413,6 +444,7 @@ export class AutumnService {
       });
       return allowed;
     } catch (error) {
+      this.recordFailure();
       logger.error(
         "Autumn checkCredits failed — billing API may be unavailable, falling back",
         {
@@ -439,6 +471,7 @@ export class AutumnService {
     if (!autumnClient || this.isPreviewTeam(teamId)) {
       return null;
     }
+    if (this.isCircuitOpen()) return null;
 
     const resolvedLockId = lockId ?? `billing_${randomUUID()}`;
 
@@ -479,6 +512,7 @@ export class AutumnService {
       });
       return resolvedLockId;
     } catch (error) {
+      this.recordFailure();
       logger.error(
         "Autumn lockCredits failed — billing API may be unavailable, falling back",
         {
@@ -502,6 +536,7 @@ export class AutumnService {
     properties,
   }: FinalizeCreditsLockParams): Promise<void> {
     if (!autumnClient) return;
+    if (this.isCircuitOpen()) return;
 
     try {
       await autumnClient.balances.finalize({
@@ -516,6 +551,7 @@ export class AutumnService {
         overrideValue,
       });
     } catch (error) {
+      this.recordFailure();
       logger.error(
         "Autumn finalizeCreditsLock failed — billing API may be unavailable",
         {
@@ -547,6 +583,7 @@ export class AutumnService {
     if (!isEnabled()) return false;
     if (!autumnClient) return false;
     if (this.isPreviewTeam(teamId)) return false;
+    if (this.isCircuitOpen()) return false;
 
     try {
       const orgId = await this.resolveOrgId(teamId);
@@ -561,6 +598,7 @@ export class AutumnService {
         properties,
       });
     } catch (error) {
+      this.recordFailure();
       logger.error(
         "Autumn trackCredits failed — billing API may be unavailable",
         {
@@ -584,6 +622,7 @@ export class AutumnService {
   }: TrackCreditsParams): Promise<void> {
     if (!autumnClient) return;
     if (this.isPreviewTeam(teamId)) return;
+    if (this.isCircuitOpen()) return;
 
     try {
       const customerId = await this.ensureTrackingContext(teamId);
@@ -595,6 +634,7 @@ export class AutumnService {
         properties: { ...properties, source: "autumn_refund" },
       });
     } catch (error) {
+      this.recordFailure();
       logger.error(
         "Autumn refundCredits failed — billing API may be unavailable",
         { teamId, value, error },

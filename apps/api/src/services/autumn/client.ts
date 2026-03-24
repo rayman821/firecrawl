@@ -12,5 +12,5 @@ if (!config.AUTUMN_SECRET_KEY && !missingKeyWarned) {
 }
 
 export const autumnClient = config.AUTUMN_SECRET_KEY
-  ? new Autumn({ secretKey: config.AUTUMN_SECRET_KEY, timeoutMs: 5000 })
+  ? new Autumn({ secretKey: config.AUTUMN_SECRET_KEY, timeoutMs: 3000 })
   : null;

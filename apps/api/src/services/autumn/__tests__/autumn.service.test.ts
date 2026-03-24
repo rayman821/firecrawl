@@ -84,6 +84,7 @@ import {
   AutumnService,
   BoundedMap,
   BoundedSet,
+  CIRCUIT_BREAKER_COOLDOWN_MS,
   isAutumnCheckDryRun,
   isAutumnCheckEnabled,
   isAutumnEnabled,
@@ -267,17 +268,68 @@ describe("ensureTeamProvisioned", () => {
   });
 
   it("does NOT mark team as ensured when createEntity has a genuine error", async () => {
-    const svc = makeService();
-    mockEntityGet.mockResolvedValue(null);
-    mockEntityCreate.mockRejectedValue(
-      Object.assign(new Error("server error"), { status: 500 }),
-    );
+    jest.useFakeTimers();
+    try {
+      const svc = makeService();
+      mockEntityGet.mockResolvedValue(null);
+      mockEntityCreate.mockRejectedValue(
+        Object.assign(new Error("server error"), { status: 500 }),
+      );
 
-    await svc.ensureTeamProvisioned({ teamId: "team-1", orgId: "org-1" });
+      await svc.ensureTeamProvisioned({ teamId: "team-1", orgId: "org-1" });
 
-    // Second call must re-attempt (team not cached).
-    await svc.ensureTeamProvisioned({ teamId: "team-1", orgId: "org-1" });
-    expect(mockEntityGet).toHaveBeenCalledTimes(2);
+      // Advance past the circuit-breaker cooldown so the retry is allowed.
+      jest.advanceTimersByTime(CIRCUIT_BREAKER_COOLDOWN_MS + 1);
+
+      // Second call must re-attempt (team not cached).
+      await svc.ensureTeamProvisioned({ teamId: "team-1", orgId: "org-1" });
+      expect(mockEntityGet).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Circuit breaker
+// ---------------------------------------------------------------------------
+
+describe("circuit breaker", () => {
+  it("suppresses calls during cooldown after a failure", async () => {
+    jest.useFakeTimers();
+    try {
+      config.AUTUMN_CHECK_ENABLED = "true";
+      const svc = makeService();
+      mockEntityGet.mockResolvedValue(makeEntity(0));
+
+      // Warm caches so checkCredits doesn't hit provisioning.
+      await svc.checkCredits({ teamId: "team-1", value: 1 });
+      mockCheck.mockClear();
+
+      // Simulate Autumn outage.
+      mockCheck.mockRejectedValueOnce(new Error("timeout"));
+      const result1 = await svc.checkCredits({ teamId: "team-1", value: 1 });
+      expect(result1).toBeNull(); // graceful fallback
+
+      // Immediately try again — circuit should be open, no HTTP call.
+      mockCheck.mockResolvedValue({
+        allowed: true,
+        customerId: "org-1",
+        balance: null,
+      });
+      const result2 = await svc.checkCredits({ teamId: "team-1", value: 1 });
+      expect(result2).toBeNull(); // still suppressed
+      expect(mockCheck).toHaveBeenCalledTimes(1); // no new call
+
+      // Advance past cooldown.
+      jest.advanceTimersByTime(CIRCUIT_BREAKER_COOLDOWN_MS + 1);
+
+      const result3 = await svc.checkCredits({ teamId: "team-1", value: 1 });
+      expect(result3).toBe(true); // circuit closed, call succeeds
+      expect(mockCheck).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
