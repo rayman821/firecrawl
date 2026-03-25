@@ -33,6 +33,13 @@ export async function fetchAudio(
   }
 
   const data = await response.json();
+
+  if (!data.public_url || typeof data.public_url !== "string") {
+    throw new Error(
+      "Audio download failed: avgrab service returned an invalid response (missing public_url)",
+    );
+  }
+
   document.audio = data.public_url;
   return document;
 }

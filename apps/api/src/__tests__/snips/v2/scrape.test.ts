@@ -2034,13 +2034,15 @@ describe("Attribute formats", () => {
     it.concurrent(
       "should reject non-YouTube URL with audio format",
       async () => {
-        await scrapeWithFailure(
+        const result = await scrapeWithFailure(
           {
             url: "https://example.com",
             formats: ["audio"],
           },
           identity,
         );
+
+        expect(result.error).toMatch(/audio.*youtube/i);
       },
       scrapeTimeout,
     );
