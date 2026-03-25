@@ -272,6 +272,7 @@ class FirecrawlClient:
         location: Optional[str] = None,
         ignore_invalid_urls: Optional[bool] = None,
         timeout: Optional[int] = None,
+        decomposition: Optional["DecompositionOption"] = None,
         scrape_options: Optional[ScrapeOptions] = None,
         integration: Optional[str] = None,
     ) -> SearchData:
@@ -298,6 +299,7 @@ class FirecrawlClient:
             location=location,
             ignore_invalid_urls=ignore_invalid_urls,
             timeout=timeout,
+            decomposition=decomposition,
             scrape_options=scrape_options,
             integration=integration,
         )

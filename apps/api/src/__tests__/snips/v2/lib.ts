@@ -385,7 +385,7 @@ export function expectMapToSucceed(response: Awaited<ReturnType<typeof map>>) {
 // Search API
 // =========================================
 
-async function searchRaw(body: SearchRequestInput, identity: Identity) {
+export async function searchRaw(body: SearchRequestInput, identity: Identity) {
   return await request(TEST_API_URL)
     .post("/v2/search")
     .set("Authorization", `Bearer ${identity.apiKey}`)

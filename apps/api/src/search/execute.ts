@@ -15,7 +15,7 @@ import {
 } from "./scrape";
 import type { BillingMetadata } from "../services/billing/types";
 
-interface SearchOptions {
+export interface SearchOptions {
   query: string;
   limit: number;
   tbs?: string;
@@ -30,7 +30,7 @@ interface SearchOptions {
   timeout: number;
 }
 
-interface SearchContext {
+export interface SearchContext {
   teamId: string;
   origin: string;
   apiKeyId: number | null;
@@ -42,7 +42,7 @@ interface SearchContext {
   agentIndexOnly?: boolean;
 }
 
-interface SearchExecuteResult {
+export interface SearchExecuteResult {
   response: SearchV2Response;
   totalResultsCount: number;
   searchCredits: number;

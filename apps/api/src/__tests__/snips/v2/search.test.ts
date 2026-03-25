@@ -1,11 +1,13 @@
 import {
   concurrentIf,
   describeIf,
+  HAS_AI,
   HAS_PROXY,
   HAS_SEARCH,
+  itIf,
   TEST_PRODUCTION,
 } from "../lib";
-import { search, idmux, Identity } from "./lib";
+import { search, searchRaw, idmux, Identity } from "./lib";
 import { config } from "../../../config";
 
 let identity: Identity;
@@ -265,6 +267,77 @@ describeIf(TEST_PRODUCTION || HAS_SEARCH || HAS_PROXY)("Search tests", () => {
       expect(res.web).toBeDefined();
       expect(res.web?.length).toBeGreaterThan(0);
       expect(res.web?.length).toBeLessThanOrEqual(21);
+    },
+    60000,
+  );
+
+  // Query decomposition tests (sequential to avoid DDG rate limits)
+  itIf(HAS_AI)(
+    "auto decomposition returns results",
+    async () => {
+      const res = await search(
+        {
+          query: "web scraping best practices",
+          decomposition: "auto",
+          limit: 5,
+        },
+        identity,
+      );
+      expect(res.web).toBeDefined();
+      expect(res.web?.length).toBeGreaterThan(0);
+      expect(res.web?.length).toBeLessThanOrEqual(5);
+    },
+    120000,
+  );
+
+  itIf(HAS_AI)(
+    "manual decomposition with numQueries and searchesPerQuery",
+    async () => {
+      const res = await search(
+        {
+          query: "javascript testing frameworks",
+          decomposition: { numQueries: 2, searchesPerQuery: 2 },
+          limit: 5,
+        },
+        identity,
+      );
+      expect(res.web).toBeDefined();
+      expect(res.web?.length).toBeGreaterThan(0);
+      expect(res.web?.length).toBeLessThanOrEqual(5);
+    },
+    120000,
+  );
+
+  itIf(HAS_AI)(
+    "decomposition deduplicates results by URL",
+    async () => {
+      const res = await search(
+        {
+          query: "python web scraping tutorial",
+          decomposition: { numQueries: 2, searchesPerQuery: 3 },
+          limit: 8,
+        },
+        identity,
+      );
+      expect(res.web).toBeDefined();
+      const urls = res.web?.map(r => r.url) ?? [];
+      const uniqueUrls = new Set(urls);
+      expect(urls.length).toBe(uniqueUrls.size);
+    },
+    120000,
+  );
+
+  it.concurrent(
+    "rejects invalid decomposition numQueries",
+    async () => {
+      const raw = await searchRaw(
+        {
+          query: "firecrawl",
+          decomposition: { numQueries: 10 },
+        } as any,
+        identity,
+      );
+      expect(raw.statusCode).toBe(400);
     },
     60000,
   );

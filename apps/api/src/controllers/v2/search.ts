@@ -18,6 +18,8 @@ import {
   captureExceptionWithZdrCheck,
 } from "../../services/sentry";
 import { executeSearch } from "../../search/execute";
+import { executeMultiSearch } from "../../search/multi-execute";
+import { decomposeQuery } from "../../search/decompose";
 import type { BillingMetadata } from "../../services/billing/types";
 import { getSearchZDR } from "../../lib/zdr-helpers";
 
@@ -116,34 +118,76 @@ export async function searchController(
       });
     }
 
-    const result = await executeSearch(
-      {
-        query: req.body.query,
-        limit: req.body.limit,
-        tbs: req.body.tbs,
-        filter: req.body.filter,
-        lang: req.body.lang,
-        country: req.body.country,
-        location: req.body.location,
-        sources: req.body.sources as Array<{ type: string }>,
-        categories: req.body.categories as CategoryOption[],
-        enterprise: req.body.enterprise,
-        scrapeOptions: req.body.scrapeOptions,
-        timeout: req.body.timeout,
-      },
-      {
-        teamId: req.auth.team_id,
-        origin: req.body.origin,
-        apiKeyId: req.acuc?.api_key_id ?? null,
-        flags: req.acuc?.flags ?? null,
-        requestId: agentRequestId ?? jobId,
-        bypassBilling: !shouldBill,
-        zeroDataRetention: isZDROrAnon,
-        billing,
-        agentIndexOnly: (req as any).agentIndexOnly ?? false,
-      },
-      logger,
-    );
+    const searchContext = {
+      teamId: req.auth.team_id,
+      origin: req.body.origin,
+      apiKeyId: req.acuc?.api_key_id ?? null,
+      flags: req.acuc?.flags ?? null,
+      requestId: agentRequestId ?? jobId,
+      bypassBilling: !shouldBill,
+      zeroDataRetention: isZDROrAnon,
+      billing,
+      agentIndexOnly: (req as any).agentIndexOnly ?? false,
+    };
+
+    const decomposition = req.body.decomposition;
+    let result;
+
+    if (decomposition) {
+      const numQueries =
+        decomposition === "auto" ? "auto" : decomposition.numQueries;
+      const searchesPerQuery =
+        decomposition === "auto" ? 5 : (decomposition.searchesPerQuery ?? 5);
+
+      const decomposed = await decomposeQuery(
+        req.body.query,
+        numQueries,
+        logger,
+      );
+
+      const subQueries = decomposed.map(q => ({
+        query: q.query,
+        limit: searchesPerQuery,
+      }));
+
+      result = await executeMultiSearch(
+        subQueries,
+        {
+          tbs: req.body.tbs,
+          filter: req.body.filter,
+          lang: req.body.lang,
+          country: req.body.country,
+          location: req.body.location,
+          sources: req.body.sources as Array<{ type: string }>,
+          categories: req.body.categories as CategoryOption[],
+          enterprise: req.body.enterprise,
+          timeout: req.body.timeout,
+        },
+        req.body.scrapeOptions,
+        searchContext,
+        req.body.limit,
+        logger,
+      );
+    } else {
+      result = await executeSearch(
+        {
+          query: req.body.query,
+          limit: req.body.limit,
+          tbs: req.body.tbs,
+          filter: req.body.filter,
+          lang: req.body.lang,
+          country: req.body.country,
+          location: req.body.location,
+          sources: req.body.sources as Array<{ type: string }>,
+          categories: req.body.categories as CategoryOption[],
+          enterprise: req.body.enterprise,
+          scrapeOptions: req.body.scrapeOptions,
+          timeout: req.body.timeout,
+        },
+        searchContext,
+        logger,
+      );
+    }
 
     // Bill team for search credits only (scrape jobs bill themselves)
     if (!isSearchPreview && shouldBill) {

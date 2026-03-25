@@ -1674,6 +1674,17 @@ export const searchRequestSchema = z
     timeout: z.int().positive().finite().prefault(60000),
     ignoreInvalidURLs: z.boolean().optional().prefault(false),
     asyncScraping: z.boolean().optional().prefault(false),
+    decomposition: z
+      .union([
+        z.literal(false),
+        z.literal("auto"),
+        z.strictObject({
+          numQueries: z.int().min(2).max(10).prefault(4),
+          searchesPerQuery: z.int().min(1).max(10).optional().prefault(5),
+        }),
+      ])
+      .optional()
+      .prefault(false),
     __searchPreviewToken: z.string().optional(),
     scrapeOptions: baseScrapeOptions
       .extend({

@@ -454,6 +454,11 @@ export interface CategoryOption {
   type: 'github' | 'research' | 'pdf';
 }
 
+export interface DecompositionOptions {
+  numQueries: number;
+  searchesPerQuery?: number;
+}
+
 export interface SearchRequest {
   query: string;
   sources?: Array<
@@ -465,6 +470,7 @@ export interface SearchRequest {
   location?: string;
   ignoreInvalidURLs?: boolean;
   timeout?: number; // ms
+  decomposition?: false | 'auto' | DecompositionOptions;
   scrapeOptions?: ScrapeOptions;
   integration?: string;
   origin?: string;

@@ -186,6 +186,18 @@ def _prepare_search_request(request: SearchRequest) -> Dict[str, Any]:
         data["ignoreInvalidURLs"] = validated_request.ignore_invalid_urls
         data.pop("ignore_invalid_urls", None)
     
+    # decomposition → decomposition (handle DecompositionOptions model → camelCase keys)
+    if validated_request.decomposition is not None:
+        decomp = validated_request.decomposition
+        if isinstance(decomp, str) or isinstance(decomp, bool):
+            data["decomposition"] = decomp
+        else:
+            data["decomposition"] = {
+                "numQueries": decomp.num_queries,
+            }
+            if decomp.searches_per_query is not None:
+                data["decomposition"]["searchesPerQuery"] = decomp.searches_per_query
+
     # scrape_options → scrapeOptions
     if validated_request.scrape_options is not None:
         scrape_data = prepare_scrape_options(validated_request.scrape_options)

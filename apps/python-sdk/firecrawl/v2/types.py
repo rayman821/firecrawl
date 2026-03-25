@@ -1054,6 +1054,16 @@ class Location(BaseModel):
     languages: Optional[List[str]] = None
 
 
+class DecompositionOptions(BaseModel):
+    """Options for query decomposition."""
+
+    num_queries: int
+    searches_per_query: Optional[int] = 5
+
+
+DecompositionOption = Union[bool, str, DecompositionOptions]
+
+
 class SearchRequest(BaseModel):
     """Request for search operations."""
 
@@ -1065,6 +1075,7 @@ class SearchRequest(BaseModel):
     location: Optional[str] = None
     ignore_invalid_urls: Optional[bool] = None
     timeout: Optional[int] = 300000
+    decomposition: Optional[DecompositionOption] = None
     scrape_options: Optional[ScrapeOptions] = None
     integration: Optional[str] = None
 
