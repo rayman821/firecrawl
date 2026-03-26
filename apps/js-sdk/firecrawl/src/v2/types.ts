@@ -456,7 +456,7 @@ export interface DecomposedQueryResult {
 }
 
 export interface DecomposedSearchData {
-  originalQuery: string;
+  originalQuery?: string;
   queries: DecomposedQueryResult[];
 }
 

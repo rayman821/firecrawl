@@ -43,10 +43,10 @@ async def search(
             handle_response_error(response, "search")
         data = response_data.get("data", {}) or {}
 
-        # Decomposition response: { originalQuery, queries: [...] }
-        if "queries" in data and "originalQuery" in data:
+        # Decomposition / multi-query response: { queries: [...], originalQuery?: ... }
+        if "queries" in data:
             return DecomposedSearchData(
-                original_query=data["originalQuery"],
+                original_query=data.get("originalQuery", ""),
                 queries=[
                     DecomposedQueryResult(
                         query=q["query"],

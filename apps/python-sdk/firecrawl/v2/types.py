@@ -1153,7 +1153,7 @@ class DecomposedQueryResult(BaseModel):
 class DecomposedSearchData(BaseModel):
     """Search results grouped by decomposed sub-queries."""
 
-    original_query: str
+    original_query: Optional[str] = None
     queries: List[DecomposedQueryResult] = []
 
 

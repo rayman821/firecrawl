@@ -63,10 +63,10 @@ export async function search(http: HttpClient, request: SearchRequest): Promise<
     }
     const data = (res.data.data || {}) as Record<string, any>;
 
-    // Decomposition response: { originalQuery, queries: [{ query, results }] }
-    if ("queries" in data && "originalQuery" in data) {
+    // Decomposition / multi-query response: { queries: [...], originalQuery?: ... }
+    if ("queries" in data) {
       const out: DecomposedSearchData = {
-        originalQuery: data.originalQuery,
+        originalQuery: data.originalQuery ?? "",
         queries: (data.queries as any[]).map((q: any) => ({
           query: q.query,
           results: transformArray<SearchResultWeb>(q.results || []),
