@@ -16,11 +16,13 @@ import {
 
 interface MultiSearchQuery {
   query: string;
+  intent?: string;
   limit: number;
 }
 
 export interface DecomposedQueryResult {
   query: string;
+  intent?: string;
   results: WebSearchResult[];
 }
 
@@ -88,6 +90,7 @@ export async function executeMultiSearch(
 
       queryResults.push({
         query: queries[i].query,
+        intent: queries[i].intent,
         results: dedupedResults,
       });
       totalResultsCount += dedupedResults.length;
@@ -99,6 +102,7 @@ export async function executeMultiSearch(
       // Still include the query with empty results
       queryResults.push({
         query: queries[i].query,
+        intent: queries[i].intent,
         results: [],
       });
     }
@@ -140,6 +144,18 @@ export async function executeMultiSearch(
     const itemsToScrape = getItemsToScrape(tempResponse, context.flags);
 
     if (itemsToScrape.length > 0) {
+      // Build URL -> intent mapping so each scrape gets the right intent
+      const urlIntentMap = new Map<string, string>();
+      for (const qr of queryResults) {
+        if (qr.intent) {
+          for (const result of qr.results) {
+            if (!urlIntentMap.has(result.url)) {
+              urlIntentMap.set(result.url, qr.intent);
+            }
+          }
+        }
+      }
+
       const scrapeOpts = {
         teamId: context.teamId,
         origin: context.origin,
@@ -153,8 +169,13 @@ export async function executeMultiSearch(
         agentIndexOnly: context.agentIndexOnly,
       };
 
+      const scrapeInputs = itemsToScrape.map(i => ({
+        ...i.scrapeInput,
+        intent: urlIntentMap.get(i.scrapeInput.url),
+      }));
+
       const allDocsWithCostTracking = await scrapeSearchResults(
-        itemsToScrape.map(i => i.scrapeInput),
+        scrapeInputs,
         scrapeOpts,
         logger,
         context.flags,

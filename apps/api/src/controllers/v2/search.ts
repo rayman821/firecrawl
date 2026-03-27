@@ -146,6 +146,7 @@ export async function searchController(
 
       const subQueries = decomposed.map(q => ({
         query: q.query,
+        intent: q.intent,
         limit: searchesPerQuery,
       }));
 

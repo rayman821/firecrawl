@@ -1147,6 +1147,7 @@ class DecomposedQueryResult(BaseModel):
     """A single decomposed query and its results."""
 
     query: str
+    intent: Optional[str] = None
     results: List[Union[SearchResultWeb, Document]] = []
 
 

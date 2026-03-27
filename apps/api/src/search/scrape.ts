@@ -20,6 +20,7 @@ interface ScrapeJobInput {
   url: string;
   title: string;
   description: string;
+  intent?: string;
 }
 
 interface ScrapeItem {
@@ -61,6 +62,23 @@ async function scrapeSearchResultDirect(
   });
 
   try {
+    // If intent is available and scrapeOptions has a query format,
+    // inject the intent as the query prompt for context-aware extraction
+    let scrapeOptions = options.scrapeOptions;
+    if (searchResult.intent && scrapeOptions.formats) {
+      const hasQueryFormat = (scrapeOptions.formats as any[]).some(
+        (f: any) => f.type === "query",
+      );
+      if (hasQueryFormat) {
+        scrapeOptions = {
+          ...scrapeOptions,
+          formats: (scrapeOptions.formats as any[]).map((f: any) =>
+            f.type === "query" ? { ...f, prompt: searchResult.intent } : f,
+          ),
+        };
+      }
+    }
+
     const job: NuQJob<ScrapeJobData> = {
       id: jobId,
       status: "active",
@@ -71,7 +89,7 @@ async function scrapeSearchResultDirect(
         mode: "single_urls",
         team_id: options.teamId,
         scrapeOptions: {
-          ...options.scrapeOptions,
+          ...scrapeOptions,
           maxAge: 3 * 24 * 60 * 60 * 1000, // 3 days
         },
         internalOptions: {

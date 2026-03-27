@@ -452,6 +452,7 @@ export interface SearchData {
 
 export interface DecomposedQueryResult {
   query: string;
+  intent?: string;
   results: Array<SearchResultWeb | Document>;
 }
 
