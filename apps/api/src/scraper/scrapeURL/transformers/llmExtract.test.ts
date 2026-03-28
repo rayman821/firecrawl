@@ -1,6 +1,7 @@
 import { removeDefaultProperty } from "./llmExtract";
 import { trimToTokenLimit } from "./llmExtract";
 import { performSummary } from "./llmExtract";
+import { performCleanContent } from "./llmExtract";
 import { encoding_for_model } from "@dqbd/tiktoken";
 
 jest.mock("@dqbd/tiktoken", () => ({
@@ -319,5 +320,77 @@ describe("performSummary", () => {
     expect(result.warning).toContain(
       "Summary generation was skipped because the markdown content is empty",
     );
+  });
+});
+
+describe("performCleanContent", () => {
+  const mockEncode = jest.fn();
+  const mockFree = jest.fn();
+  const mockEncoder = {
+    encode: mockEncode,
+    free: mockFree,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (encoding_for_model as jest.Mock).mockReturnValue(mockEncoder);
+  });
+
+  const makeMeta = (onlyCleanContent: boolean) =>
+    ({
+      options: { onlyCleanContent },
+      internalOptions: { zeroDataRetention: false, teamId: "test-team" },
+      logger: {
+        child: jest.fn(() => ({ info: jest.fn() })),
+        info: jest.fn(),
+      },
+      costTracking: {},
+      id: "test-id",
+    }) as any;
+
+  it("should skip cleaning when input tokens exceed model max output tokens", async () => {
+    const longMarkdown = "A".repeat(200000); // simulate a very long document
+    // Simulate 80,000 tokens — well above gpt-4o-mini's 16,384 output limit
+    mockEncode.mockReturnValue(new Array(80000));
+
+    const document = { markdown: longMarkdown } as any;
+    const result = await performCleanContent(makeMeta(true), document);
+
+    // Should preserve original markdown
+    expect(result.markdown).toBe(longMarkdown);
+    // Should have a warning about skipping
+    expect(result.warning).toContain("Content cleaning was skipped");
+    expect(result.warning).toContain("too long");
+    expect(result.warning).toContain("80000 tokens");
+    expect(result.warning).toContain("original markdown has been preserved");
+  });
+
+  it("should not skip cleaning when input tokens are within model output limit", async () => {
+    // Simulate 5,000 tokens — well within gpt-4o-mini's 16,384 output limit
+    mockEncode.mockReturnValue(new Array(5000));
+
+    const document = { markdown: "Short content for cleaning" } as any;
+
+    // This will fail when it tries to call generateCompletions (no LLM available),
+    // but the point is it should NOT return early with the skip warning.
+    // We catch the error and verify it got past the guard.
+    try {
+      await performCleanContent(makeMeta(true), document);
+    } catch (_e) {
+      // Expected — no LLM available in test. The important thing is it didn't skip.
+    }
+
+    // Should NOT have the skip warning (warning is undefined or doesn't contain the skip message)
+    expect(document.warning ?? "").not.toContain(
+      "Content cleaning was skipped because the content is too long",
+    );
+  });
+
+  it("should return document unchanged when onlyCleanContent is false", async () => {
+    const document = { markdown: "Some content" } as any;
+    const result = await performCleanContent(makeMeta(false), document);
+
+    expect(result.markdown).toBe("Some content");
+    expect(result.warning).toBeUndefined();
   });
 });
