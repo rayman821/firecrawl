@@ -371,16 +371,37 @@ describe("performCleanContent", () => {
 
     const document = { markdown: "Short content for cleaning" } as any;
 
-    // This will fail when it tries to call generateCompletions (no LLM available),
-    // but the point is it should NOT return early with the skip warning.
-    // We catch the error and verify it got past the guard.
+    // Track whether logger.child was called with the generateCompletions method,
+    // which only happens after the guard passes (line 1180 in llmExtract.ts).
+    const childLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn() };
+    const loggerChild = jest.fn(() => childLogger);
+    const meta = {
+      options: { onlyCleanContent: true },
+      internalOptions: { zeroDataRetention: false, teamId: "test-team" },
+      logger: {
+        child: loggerChild,
+        info: jest.fn(),
+        error: jest.fn(),
+      },
+      costTracking: {},
+      id: "test-id",
+    } as any;
+
+    // The call will fail inside generateCompletions (no LLM provider configured),
+    // but if it gets that far, it proves the guard didn't fire.
     try {
-      await performCleanContent(makeMeta(true), document);
+      await performCleanContent(meta, document);
     } catch (_e) {
-      // Expected — no LLM available in test. The important thing is it didn't skip.
+      // Expected — no LLM available in test
     }
 
-    // Should NOT have the skip warning (warning is undefined or doesn't contain the skip message)
+    // Verify the guard did NOT skip: logger.child should have been called with
+    // the generateCompletions method, which only happens after the guard.
+    expect(loggerChild).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "performCleanContent/generateCompletions",
+      }),
+    );
     expect(document.warning ?? "").not.toContain(
       "Content cleaning was skipped because the content is too long",
     );
