@@ -16,7 +16,7 @@ function decodeCursor(
 ): { createdAt: string; id: string } | null {
   try {
     const decoded = Buffer.from(cursor, "base64url").toString();
-    const sepIdx = decoded.indexOf(":");
+    const sepIdx = decoded.lastIndexOf(":");
     if (sepIdx === -1) return null;
     const createdAt = decoded.slice(0, sepIdx);
     const id = decoded.slice(sepIdx + 1);
