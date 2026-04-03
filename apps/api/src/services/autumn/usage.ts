@@ -50,7 +50,9 @@ export async function getTeamBalance(
   teamId: string,
 ): Promise<TeamBalance | null> {
   if (!autumnClient) {
-    throw new Error("Autumn client is not configured (AUTUMN_SECRET_KEY missing)");
+    throw new Error(
+      "Autumn client is not configured (AUTUMN_SECRET_KEY missing)",
+    );
   }
 
   const orgId = await lookupOrgId(teamId);
@@ -99,17 +101,13 @@ export async function getTeamBalance(
   const periodStartEpoch = activeSub?.currentPeriodStart;
   const periodEndEpoch = activeSub?.currentPeriodEnd;
 
-  // Extract plan-only credits from the breakdown (excludes credit packs,
-  // auto-recharge, etc.) to preserve backwards compatibility with the old
-  // planCredits field semantics.
-  let planCredits = creditBalance?.granted ?? 0;
-  const breakdowns: Array<any> | undefined = creditBalance?.breakdown;
-  if (breakdowns?.length) {
-    planCredits = breakdowns.reduce(
-      (sum: number, b: any) => sum + (b.includedGrant ?? 0),
-      0,
-    );
-  }
+  // Use total granted credits (includes credit packs, auto-recharge, etc.)
+  // so that the usage percentage shown on the dashboard matches the percentage
+  // used by the alert system (Supabase ACUC total_credits_sum also includes
+  // expansion packs). Previously this only summed includedGrant from
+  // breakdowns, which excluded packs and caused the dashboard to show a
+  // different usage percentage than the alert emails.
+  const planCredits = creditBalance?.granted ?? 0;
 
   return {
     remaining: creditBalance?.remaining ?? 0,
