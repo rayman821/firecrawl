@@ -27,7 +27,6 @@ import { supabase_service } from "../services/supabase";
 import {
   autumnService,
   isAutumnCheckEnabled,
-  isAutumnCheckDryRun,
 } from "../services/autumn/autumn.service";
 
 export function checkCreditsMiddleware(
@@ -131,46 +130,53 @@ export function checkCreditsMiddleware(
         source: "checkCreditsMiddleware",
         path: req.path,
       };
-      const [legacyCheck, autumnAllowed] = await Promise.all([
-        checkTeamCredits(req.acuc ?? null, req.auth.team_id, requestedCredits),
-        useAutumnCheck
-          ? autumnService.checkCredits({
-              teamId: req.auth.team_id,
-              value: requestedCredits,
-              properties: autumnProperties,
-            })
-          : null,
-      ]);
-      let { success, remainingCredits, chunk } = legacyCheck;
 
-      if (autumnAllowed !== null) {
-        const dryRun = isAutumnCheckDryRun();
-        if (autumnAllowed !== legacyCheck.success) {
-          logger.warn("Autumn check result diverged from legacy credit gate", {
-            teamId: req.auth.team_id,
-            path: req.path,
-            requestedCredits,
-            autumnAllowed,
-            legacyAllowed: legacyCheck.success,
-            dryRun,
-          });
-        }
-        if (dryRun) {
-          logger.info("Autumn check dry-run result (not enforced)", {
-            teamId: req.auth.team_id,
-            path: req.path,
-            requestedCredits,
-            autumnAllowed,
-            legacyAllowed: legacyCheck.success,
-          });
+      let success: boolean;
+      let remainingCredits: number;
+
+      if (useAutumnCheck) {
+        const autumnResult = await autumnService.checkCredits({
+          teamId: req.auth.team_id,
+          value: requestedCredits,
+          properties: autumnProperties,
+        });
+
+        if (autumnResult !== null) {
+          success = autumnResult.allowed;
+          remainingCredits = autumnResult.remaining;
         } else {
-          success = autumnAllowed;
+          // Autumn unavailable — fall back to legacy ACUC check
+          logger.warn(
+            "Autumn check returned null, falling back to legacy credit gate",
+            {
+              teamId: req.auth.team_id,
+              path: req.path,
+              requestedCredits,
+            },
+          );
+          const legacyCheck = await checkTeamCredits(
+            req.acuc ?? null,
+            req.auth.team_id,
+            requestedCredits,
+          );
+          success = legacyCheck.success;
+          remainingCredits = legacyCheck.remainingCredits;
+          if (legacyCheck.chunk) {
+            req.acuc = legacyCheck.chunk;
+          }
         }
+      } else {
+        // Autumn check not enabled for this org — use legacy
+        const legacyCheck = await checkTeamCredits(
+          req.acuc ?? null,
+          req.auth.team_id,
+          requestedCredits,
+        );
+        success = legacyCheck.success;
         remainingCredits = legacyCheck.remainingCredits;
-      }
-
-      if (chunk) {
-        req.acuc = chunk;
+        if (legacyCheck.chunk) {
+          req.acuc = legacyCheck.chunk;
+        }
       }
       req.account = { remainingCredits };
       if (!success) {
