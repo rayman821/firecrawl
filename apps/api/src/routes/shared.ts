@@ -10,7 +10,6 @@ import { RateLimiterMode } from "../types";
 import { authenticateUser } from "../controllers/auth";
 import { createIdempotencyKey } from "../services/idempotency/create";
 import { validateIdempotencyKey } from "../services/idempotency/validate";
-import { checkTeamCredits } from "../services/billing/credit_billing";
 import { isUrlBlocked } from "../scraper/WebScraper/utils/blocklist";
 import { logger } from "../lib/logger";
 import {
@@ -121,27 +120,18 @@ export function checkCreditsMiddleware(
 
       const requestedCredits = minimum ?? 1;
 
-      const [legacyCheck, autumnResult] = await Promise.all([
-        checkTeamCredits(req.acuc ?? null, req.auth.team_id, requestedCredits),
-        autumnService.checkCredits({
-          teamId: req.auth.team_id,
-          value: requestedCredits,
-          properties: {
-            source: "checkCreditsMiddleware",
-            path: req.path,
-          },
-        }),
-      ]);
-      let { success, remainingCredits, chunk } = legacyCheck;
+      const autumnResult = await autumnService.checkCredits({
+        teamId: req.auth.team_id,
+        value: requestedCredits,
+        properties: {
+          source: "checkCreditsMiddleware",
+          path: req.path,
+        },
+      });
 
-      if (autumnResult !== null) {
-        success = autumnResult.allowed;
-        remainingCredits = autumnResult.remaining;
-      }
+      const success = autumnResult?.allowed ?? true;
+      const remainingCredits = autumnResult?.remaining ?? Infinity;
 
-      if (chunk) {
-        req.acuc = chunk;
-      }
       req.account = { remainingCredits };
       if (!success) {
         if (

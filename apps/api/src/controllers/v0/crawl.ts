@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { checkTeamCredits } from "../../../src/services/billing/credit_billing";
+import { autumnService } from "../../../src/services/autumn/autumn.service";
 import { authenticateUser } from "../auth";
 import { RateLimiterMode } from "../../../src/types";
 import { addScrapeJob } from "../../../src/services/queue-jobs";
@@ -123,11 +123,13 @@ export async function crawlController(req: Request, res: Response) {
     }
 
     const limitCheck = req.body?.crawlerOptions?.limit ?? 1;
-    const {
-      success: creditsCheckSuccess,
-      message: creditsCheckMessage,
-      remainingCredits,
-    } = await checkTeamCredits(chunk, team_id, limitCheck);
+    const autumnResult = await autumnService.checkCredits({
+      teamId: team_id,
+      value: limitCheck,
+      properties: { source: "v0/crawl" },
+    });
+    const creditsCheckSuccess = autumnResult?.allowed ?? true;
+    const remainingCredits = autumnResult?.remaining ?? Infinity;
 
     if (!creditsCheckSuccess) {
       return res.status(402).json({
