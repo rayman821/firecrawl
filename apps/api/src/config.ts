@@ -168,6 +168,12 @@ const configSchema = z.object({
   PDF_OCR_BASE_URL: z.string().optional(),
   PDF_OCR_API_KEY: z.string().optional(),
 
+  // Fire PDF (replaces MinerU for a % of traffic)
+  FIRE_PDF_ENABLE: z.stringbool().optional(),
+  FIRE_PDF_PERCENT: z.coerce.number().min(0).max(100).default(10),
+  FIRE_PDF_BASE_URL: z.string().optional(),
+  FIRE_PDF_API_KEY: z.string().optional(),
+
   // RunPod
   RUNPOD_MU_API_KEY: z.string().optional(),
   RUNPOD_MU_POD_ID: z.string().optional(),

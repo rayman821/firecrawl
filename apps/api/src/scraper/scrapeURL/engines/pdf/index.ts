@@ -29,6 +29,7 @@ import {
 } from "../../../../lib/native-logging";
 import { withSpan, setSpanAttributes } from "../../../../lib/otel-tracer";
 import { scrapePDFWithRunPodMU } from "./runpodMU";
+import { scrapePDFWithFirePDF } from "./selfHostedOCR";
 import { scrapePDFWithParsePDF } from "./pdfParse";
 import { captureExceptionWithZdrCheck } from "../../../../services/sentry";
 import { isPdfBuffer, PDF_SNIFF_WINDOW } from "./pdfUtils";
@@ -341,7 +342,41 @@ export async function scrapePDF(meta: Meta): Promise<EngineScrapeResult> {
     if (!result && !skipOCR) {
       const base64Content = (await readFile(tempFilePath)).toString("base64");
 
+      // Route a percentage of traffic to Fire PDF instead of MinerU
+      const useFirePDF =
+        config.FIRE_PDF_ENABLE &&
+        config.FIRE_PDF_BASE_URL &&
+        base64Content.length < MAX_FILE_SIZE &&
+        Math.random() * 100 < config.FIRE_PDF_PERCENT;
+
+      if (useFirePDF) {
+        try {
+          result = await scrapePDFWithFirePDF(
+            {
+              ...meta,
+              logger: meta.logger.child({
+                method: "scrapePDF/firePDF",
+              }),
+            },
+            base64Content,
+            maxPages,
+            effectivePageCount,
+          );
+        } catch (error) {
+          if (
+            error instanceof RemoveFeatureError ||
+            error instanceof AbortManagerThrownError
+          ) {
+            throw error;
+          }
+          meta.logger.warn("Fire PDF failed -- falling back to MinerU", {
+            error,
+          });
+        }
+      }
+
       if (
+        !result &&
         base64Content.length < MAX_FILE_SIZE &&
         config.RUNPOD_MU_API_KEY &&
         config.RUNPOD_MU_POD_ID
