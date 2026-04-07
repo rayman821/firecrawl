@@ -4,7 +4,7 @@ import * as marked from "marked";
 import { robustFetch } from "../../lib/fetch";
 import { z } from "zod";
 import path from "node:path";
-import { runSelfHostedOCRExperiment } from "./selfHostedOCR";
+import { runSelfHostedOCRExperiment } from "./firePDF";
 import {
   getPdfResultFromCache,
   savePdfResultToCache,
