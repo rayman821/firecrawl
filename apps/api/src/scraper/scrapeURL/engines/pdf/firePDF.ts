@@ -5,6 +5,10 @@ import { z } from "zod";
 import * as marked from "marked";
 import type { PDFProcessorResult } from "./types";
 import { computeSimilarityMetrics } from "./similarityMetrics";
+import {
+  getPdfResultFromCache,
+  savePdfResultToCache,
+} from "../../../../lib/gcs-pdf-cache";
 
 export function runSelfHostedOCRExperiment(
   meta: Meta,
@@ -89,8 +93,25 @@ export async function scrapePDFWithFirePDF(
   maxPages?: number,
   pagesProcessed?: number,
 ): Promise<PDFProcessorResult> {
-  const startedAt = Date.now();
   const logger = meta.logger.child({ method: "scrapePDF/firePDF" });
+
+  if (!maxPages && !meta.internalOptions.zeroDataRetention) {
+    try {
+      const cached = await getPdfResultFromCache(base64Content, "firepdf");
+      if (cached) {
+        logger.info("Using cached Fire PDF result", {
+          scrapeId: meta.id,
+        });
+        return cached;
+      }
+    } catch (error) {
+      logger.warn("Error checking Fire PDF cache, proceeding", { error });
+    }
+  }
+
+  meta.abort.throwIfAborted();
+
+  const startedAt = Date.now();
 
   logger.info("Fire PDF started", {
     scrapeId: meta.id,
@@ -133,8 +154,18 @@ export async function scrapePDFWithFirePDF(
     perPageMs: pages ? Math.round(durationMs / pages) : undefined,
   });
 
-  return {
+  const processorResult = {
     markdown: resp.markdown,
     html: await marked.parse(resp.markdown, { async: true }),
   };
+
+  if (!meta.internalOptions.zeroDataRetention) {
+    try {
+      await savePdfResultToCache(base64Content, processorResult, "firepdf");
+    } catch (error) {
+      logger.warn("Error saving Fire PDF result to cache", { error });
+    }
+  }
+
+  return processorResult;
 }
