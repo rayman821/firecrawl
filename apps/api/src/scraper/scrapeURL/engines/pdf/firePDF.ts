@@ -66,46 +66,15 @@ export async function scrapePDFWithFirePDF(
   const durationMs = Date.now() - startedAt;
   const pages = resp.pages_processed ?? pagesProcessed;
 
-  const allPagesFailed =
-    resp.failed_pages &&
-    resp.failed_pages.length > 0 &&
-    pages !== undefined &&
-    resp.failed_pages.length >= pages;
-
-  if (allPagesFailed) {
-    logger.error("FirePDF failed: all pages failed", {
-      scrapeId: meta.id,
-      url: meta.rewrittenUrl ?? meta.url,
-      durationMs,
-      failedPages: resp.failed_pages,
-      pagesProcessed: pages,
-    });
-    throw new Error(
-      `FirePDF: all ${resp.failed_pages!.length} pages failed`,
-    );
-  }
-
-  if (resp.failed_pages && resp.failed_pages.length > 0) {
-    logger.warn("FirePDF completed with failed pages", {
-      scrapeId: meta.id,
-      url: meta.rewrittenUrl ?? meta.url,
-      durationMs,
-      markdownLength: resp.markdown.length,
-      failedPages: resp.failed_pages,
-      pagesProcessed: pages,
-      perPageMs: pages ? Math.round(durationMs / pages) : undefined,
-    });
-  } else {
-    logger.info("FirePDF completed", {
-      scrapeId: meta.id,
-      url: meta.rewrittenUrl ?? meta.url,
-      durationMs,
-      markdownLength: resp.markdown.length,
-      failedPages: resp.failed_pages,
-      pagesProcessed: pages,
-      perPageMs: pages ? Math.round(durationMs / pages) : undefined,
-    });
-  }
+  logger.info("FirePDF completed", {
+    scrapeId: meta.id,
+    url: meta.rewrittenUrl ?? meta.url,
+    durationMs,
+    markdownLength: resp.markdown.length,
+    failedPages: resp.failed_pages,
+    pagesProcessed: pages,
+    perPageMs: pages ? Math.round(durationMs / pages) : undefined,
+  });
 
   const processorResult = {
     markdown: resp.markdown,
