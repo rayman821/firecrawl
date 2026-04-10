@@ -764,7 +764,7 @@ const agentWebhookSchema = createWebhookSchema([
 
 export const agentRequestSchema = z.strictObject({
   urls: URL.array().optional(),
-  prompt: z.string().max(10000),
+  prompt: z.string().min(1).max(10000),
   schema: z
     .any()
     .optional()
@@ -787,7 +787,7 @@ export const agentRequestSchema = z.strictObject({
     }),
   origin: z.string().optional().prefault("api"),
   integration: integrationSchema.optional().transform(val => val || null),
-  maxCredits: z.number().optional(),
+  maxCredits: z.number().positive().optional(),
   strictConstrainToURLs: z.boolean().optional(),
   webhook: agentWebhookSchema.optional(),
 
@@ -903,8 +903,8 @@ export type BatchScrapeRequestInput = Omit<
 export const crawlerOptions = z.strictObject({
   includePaths: z.string().array().prefault([]),
   excludePaths: z.string().array().prefault([]),
-  maxDiscoveryDepth: z.number().optional(),
-  limit: z.number().prefault(10000), // default?
+  maxDiscoveryDepth: z.number().positive().optional(),
+  limit: z.number().positive().prefault(10000), // default?
   crawlEntireDomain: z.boolean().optional(),
   allowExternalLinks: z.boolean().prefault(false),
   allowSubdomains: z.boolean().prefault(false),
@@ -934,7 +934,7 @@ const crawlRequestSchemaBase = crawlerOptions.extend({
   integration: integrationSchema.optional().transform(val => val || null),
   scrapeOptions: baseScrapeOptions.prefault(() => baseScrapeOptions.parse({})),
   webhook: webhookSchema.optional(),
-  limit: z.number().prefault(10000),
+  limit: z.number().positive().prefault(10000),
   maxConcurrency: z.int().positive().optional(),
   zeroDataRetention: z.boolean().optional(),
   prompt: z.string().max(10000).optional(),
@@ -1633,7 +1633,7 @@ const pdfCategoryOptions = z.strictObject({
 
 export const searchRequestSchema = z
   .strictObject({
-    query: z.string(),
+    query: z.string().min(1),
     limit: z.int().positive().finite().max(100).optional().prefault(10),
     tbs: z.string().optional(),
     filter: z.string().optional(),
