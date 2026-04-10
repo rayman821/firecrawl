@@ -556,11 +556,12 @@ export function crawlToCrawler(
       sc.crawlerOptions?.allowExternalContentLinks ?? false,
     allowSubdomains: sc.crawlerOptions?.allowSubdomains ?? false,
     ignoreRobotsTxt:
-      teamFlags?.ignoreRobots ?? sc.crawlerOptions?.ignoreRobotsTxt ?? false,
+      (teamFlags?.ignoreRobots && sc.crawlerOptions?.ignoreRobotsTxt) ?? false,
     regexOnFullURL: sc.crawlerOptions?.regexOnFullURL ?? false,
     maxDiscoveryDepth: sc.crawlerOptions?.maxDiscoveryDepth,
     currentDiscoveryDepth: crawlerOptions?.currentDiscoveryDepth ?? 0,
-    zeroDataRetention: (getScrapeZDR(teamFlags) === "forced" || sc.zeroDataRetention) ?? false,
+    zeroDataRetention:
+      (getScrapeZDR(teamFlags) === "forced" || sc.zeroDataRetention) ?? false,
     location: sc.scrapeOptions?.location,
     headers: sc.scrapeOptions?.headers,
   });
